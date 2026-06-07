@@ -1,4 +1,35 @@
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
+const getStorage = () => (
+  localStorage.getItem('rememberMe') === 'true' ? localStorage : sessionStorage
+)
+
+const getAuthToken = () => localStorage.getItem('authToken') || sessionStorage.getItem('authToken')
+
+const saveAuthSession = (data, rememberMe) => {
+  const storage = rememberMe ? localStorage : sessionStorage
+  const otherStorage = rememberMe ? sessionStorage : localStorage
+
+  otherStorage.removeItem('authToken')
+  otherStorage.removeItem('user')
+  storage.setItem('authToken', data.token)
+  storage.setItem('user', JSON.stringify(data.user))
+  localStorage.setItem('rememberMe', rememberMe ? 'true' : 'false')
+
+  if (rememberMe) {
+    localStorage.setItem('rememberedEmail', data.user.email)
+  } else {
+    localStorage.removeItem('rememberedEmail')
+  }
+}
+
+const clearAuthSession = () => {
+  localStorage.removeItem('authToken')
+  localStorage.removeItem('user')
+  sessionStorage.removeItem('authToken')
+  sessionStorage.removeItem('user')
+}
 
 const mockDocuments = [
   {
@@ -56,61 +87,146 @@ const mockStats = {
 }
 
 export const authAPI = {
-  login: async (email, password) => {
-    await delay(800)
-    
-    if (email && password) {
-      const token = 'mock-jwt-token-' + Date.now()
-      const user = {
-        id: 1,
-        name: 'Maria',
-        email: email,
-        plan: 'Free plan',
-        documentsCount: 3
-      }
-      
-      localStorage.setItem('authToken', token)
-      localStorage.setItem('user', JSON.stringify(user))
-      
-      return { success: true, token, user }
+  login: async (email, password, rememberMe = false) => {
+    const response = await fetch(`${API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, password, rememberMe })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Invalid credentials')
     }
-    
-    throw new Error('Invalid credentials')
+
+    saveAuthSession(data, rememberMe)
+
+    return data
   },
   
   register: async (name, email, password) => {
-    await delay(800)
-    
-    if (name && email && password) {
-      const token = 'mock-jwt-token-' + Date.now()
-      const user = {
-        id: Date.now(),
-        name: name,
-        email: email,
-        plan: 'Free plan',
-        documentsCount: 0
-      }
-      
-      localStorage.setItem('authToken', token)
-      localStorage.setItem('user', JSON.stringify(user))
-      
-      return { success: true, token, user }
+    const [firstName, ...lastNameParts] = name.trim().split(' ')
+    const response = await fetch(`${API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        firstName,
+        lastName: lastNameParts.join(' ')
+      })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Registration failed')
     }
-    
-    throw new Error('Registration failed')
+
+    saveAuthSession({
+      ...data,
+      user: {
+      ...data.user,
+      plan: 'Free plan',
+      documentsCount: 0
+      }
+    }, true)
+
+    return data
+  },
+
+  getAuthHeader: () => {
+    const token = getAuthToken()
+
+    return token
+      ? {
+          Authorization: `Bearer ${token}`
+        }
+      : {}
+  },
+
+  validateSession: async () => {
+    const response = await fetch(`${API_URL}/api/auth/me`, {
+      headers: {
+        ...authAPI.getAuthHeader()
+      }
+    })
+
+    if (!response.ok) {
+      clearAuthSession()
+      throw new Error('Session expired')
+    }
+
+    return response.json()
+  },
+
+  forgotPassword: async (email) => {
+    const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not request password reset')
+    }
+
+    return data
+  },
+
+  resetPassword: async (email, token, password) => {
+    const response = await fetch(`${API_URL}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, token, password })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not reset password')
+    }
+
+    return data
   },
   
   logout: async () => {
-    await delay(300)
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('user')
+    const token = getAuthToken()
+
+    if (token) {
+      await fetch(`${API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          ...authAPI.getAuthHeader()
+        }
+      }).catch(() => null)
+    }
+
+    clearAuthSession()
     return { success: true }
   },
   
   getCurrentUser: () => {
-    const userStr = localStorage.getItem('user')
+    const userStr = getStorage().getItem('user') || localStorage.getItem('user') || sessionStorage.getItem('user')
     return userStr ? JSON.parse(userStr) : null
-  }
+  },
+
+  hasSession: () => Boolean(getAuthToken()),
+
+  isRemembered: () => localStorage.getItem('rememberMe') === 'true',
+
+  getRememberedEmail: () => localStorage.getItem('rememberedEmail') || ''
 }
 
 export const documentsAPI = {
@@ -119,13 +235,13 @@ export const documentsAPI = {
     return mockDocuments
   },
   
-  upload: async (file, config) => {
+  upload: async (file, config = {}) => {
     await delay(2000)
     
     const newDoc = {
       id: Date.now(),
       title: file.name.replace('.pdf', ''),
-      pages: Math.floor(Math.random() * 100) + 20,
+      pages: config.pages || Math.floor(Math.random() * 100) + 20,
       quizzes: 0,
       uploadedAt: 'Just now',
       icon: '📄'
@@ -134,7 +250,7 @@ export const documentsAPI = {
     return newDoc
   },
   
-  delete: async (id) => {
+  delete: async () => {
     await delay(500)
     return { success: true }
   }

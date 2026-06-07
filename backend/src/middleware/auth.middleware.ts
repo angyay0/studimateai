@@ -1,8 +1,6 @@
-# Middleware de Autenticación Placeholder
-
 import { Request, Response, NextFunction } from 'express';
+import { AuthError, AuthService } from '../services/AuthService';
 
-// Extender tipos de Express
 declare global {
   namespace Express {
     interface Request {
@@ -10,42 +8,53 @@ declare global {
         id: string;
         email: string;
         role: string;
+        sessionId: string;
       };
     }
   }
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+function getBearerToken(req: Request) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    return null;
+  }
+
+  return authHeader.slice('Bearer '.length);
+}
+
+export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ error: 'Missing authorization header' });
+    const token = getBearerToken(req);
+
+    if (!token) {
+      res.status(401).json({ error: 'Missing authorization header' });
+      return;
     }
 
-    const token = authHeader.replace('Bearer ', '');
-
-    // TODO: Verify JWT token
-    // const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // req.user = decoded as any;
-
-    console.log('Auth middleware: Token verified (TODO: implement)');
+    req.user = await AuthService.verifySessionToken(token);
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    if (error instanceof AuthError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+
+    res.status(401).json({ error: 'Invalid session' });
   }
 }
 
-export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   try {
-    const authHeader = req.headers.authorization;
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      // TODO: Verify JWT token
-      // req.user = jwt.verify(token, process.env.JWT_SECRET) as any;
+    const token = getBearerToken(req);
+
+    if (token) {
+      req.user = await AuthService.verifySessionToken(token);
     }
-    next();
   } catch {
-    // Silently continue without auth
-    next();
+    // Continue without auth for optional routes.
   }
+
+  next();
 }

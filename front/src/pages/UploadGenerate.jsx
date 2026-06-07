@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Upload, FileText, Trash2, Sparkles, HelpCircle } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { documentsAPI, quizzesAPI } from '../services/api'
 
-function UploadGenerate() {
+function UploadGenerate({ onLogout }) {
   const [documents, setDocuments] = useState([])
   const [selectedDoc, setSelectedDoc] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -16,11 +16,7 @@ function UploadGenerate() {
     focusTopic: ''
   })
 
-  useEffect(() => {
-    loadDocuments()
-  }, [])
-
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     try {
       const docs = await documentsAPI.getAll()
       setDocuments(docs)
@@ -30,7 +26,11 @@ function UploadGenerate() {
     } catch (error) {
       console.error('Error loading documents:', error)
     }
-  }
+  }, [selectedDoc])
+
+  useEffect(() => {
+    loadDocuments()
+  }, [loadDocuments])
 
   const handleDrag = (e) => {
     e.preventDefault()
@@ -113,7 +113,7 @@ function UploadGenerate() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar onLogout={onLogout} />
       
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-8">

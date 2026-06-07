@@ -5,25 +5,25 @@
   "private": true,
   "workspaces": [
     "backend",
-    "frontend"
+    "front"
   ],
   "scripts": {
     "dev": "npm run dev --workspaces",
     "dev:backend": "npm --workspace backend run dev",
-    "dev:frontend": "npm --workspace frontend run dev",
+    "dev:frontend": "npm --workspace front run dev",
     "build": "npm run build --workspaces",
     "build:backend": "npm --workspace backend run build",
-    "build:frontend": "npm --workspace frontend run build",
+    "build:frontend": "npm --workspace front run build",
     "test": "npm run test --workspaces",
     "test:backend": "npm --workspace backend run test",
-    "test:frontend": "npm --workspace frontend run test",
+    "test:frontend": "npm --workspace front run test",
     "lint": "npm run lint --workspaces",
     "lint:backend": "npm --workspace backend run lint",
-    "lint:frontend": "npm --workspace frontend run lint",
+    "lint:frontend": "npm --workspace front run lint",
     "format": "npm run format --workspaces",
     "type-check": "npm run type-check --workspaces",
     "start": "npm --workspace backend run start",
-    "clean": "rm -rf node_modules backend/dist backend/node_modules frontend/dist frontend/node_modules"
+    "clean": "rm -rf node_modules backend/dist backend/node_modules front/dist front/node_modules"
   },
   "keywords": [
     "education",

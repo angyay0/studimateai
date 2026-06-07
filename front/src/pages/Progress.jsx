@@ -3,7 +3,7 @@ import { TrendingUp, Award, Flame, Target } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { statsAPI } from '../services/api'
 
-function Progress() {
+function Progress({ onLogout }) {
   const [progressData, setProgressData] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -25,7 +25,7 @@ function Progress() {
   if (loading) {
     return (
       <div className="flex h-screen">
-        <Sidebar />
+        <Sidebar onLogout={onLogout} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -38,7 +38,7 @@ function Progress() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar onLogout={onLogout} />
       
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-8">

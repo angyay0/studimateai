@@ -4,7 +4,7 @@ import { BookOpen, Target, Clock, Star, Upload, ChevronRight, Flame } from 'luci
 import Sidebar from '../components/Sidebar'
 import { statsAPI, documentsAPI, quizzesAPI, authAPI } from '../services/api'
 
-function Dashboard() {
+function Dashboard({ onLogout }) {
   const [stats, setStats] = useState(null)
   const [documents, setDocuments] = useState([])
   const [upcomingQuizzes, setUpcomingQuizzes] = useState([])
@@ -44,7 +44,7 @@ function Dashboard() {
   if (loading) {
     return (
       <div className="flex h-screen">
-        <Sidebar />
+        <Sidebar onLogout={onLogout} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -57,7 +57,7 @@ function Dashboard() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar onLogout={onLogout} />
       
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-8">
@@ -188,7 +188,7 @@ function Dashboard() {
 
                 <div className="card bg-gradient-to-br from-primary-50 to-purple-50 border-primary-200">
                   <p className="text-sm text-gray-700 mb-3">
-                    🎯 You're on track! Keep up the momentum.
+                    🎯 You are on track! Keep up the momentum.
                   </p>
                   <Link to="/progress" className="text-primary-600 hover:text-primary-700 font-medium text-sm flex items-center gap-1">
                     View detailed progress

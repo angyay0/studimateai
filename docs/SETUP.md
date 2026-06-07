@@ -53,6 +53,48 @@ FRONTEND_PORT=3000
 VITE_API_URL=http://localhost:5000
 ```
 
+Importante:
+- Nunca subas `.env` al repositorio.
+- `.env.example` solo debe contener valores de ejemplo.
+- `OPENAI_API_KEY` y `JWT_SECRET` se leen desde variables de entorno en runtime.
+
+### 2.1 Verificar conexion segura con OpenAI
+
+Con el backend instalado, prueba la conexion sin imprimir la llave:
+
+```bash
+npm --workspace backend run openai:test
+```
+
+Tambien puedes verificarlo desde el endpoint seguro del backend:
+
+```bash
+curl http://localhost:5000/api/openai/health
+```
+
+Respuestas esperadas:
+
+```json
+{
+  "configured": true,
+  "ok": true,
+  "model": "gpt-4-turbo",
+  "status": 200,
+  "message": "OpenAI API connection successful"
+}
+```
+
+Si la llave no existe o sigue como placeholder, la respuesta sera `503`:
+
+```json
+{
+  "configured": false,
+  "ok": false,
+  "model": "gpt-4-turbo",
+  "message": "OPENAI_API_KEY is not configured"
+}
+```
+
 ### 3. Instalar dependencias del monorepo
 
 ```bash
