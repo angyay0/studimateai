@@ -227,9 +227,9 @@ Consulta las siguientes guías para más información:
 
 ### Workflow Git
 
-1. Crear rama: `git checkout -b feature/nombre-feature`
+1. Crear rama: `git checkout -b feature/SMAI-XX/nombre-feature`
 2. Desarrollar y commitear: `git commit -m "feat: descripción"`
-3. Push: `git push origin feature/nombre-feature`
+3. Push: `git push origin feature/SMAI-XX/nombre-feature`
 4. Pull Request en GitHub
 5. Code Review
 6. Merge a `main`
