@@ -1,0 +1,17 @@
+// Git workflow configuration for the project
+
+[core]
+    excludesfile = .gitignore
+    
+[pull]
+    rebase = false
+
+[merge]
+    conflictstyle = diff3
+
+[diff]
+    mnemonicprefix = true
+
+[status]
+    short = true
+    branch = true
