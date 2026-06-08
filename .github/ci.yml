@@ -1,0 +1,44 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+
+jobs:
+  backend-build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout del repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Configurar Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      # 3. Instalar dependencias solo del backend
+      - name: Install backend dependencies
+        run: npm ci --workspace backend
+
+      # 4. Lint backend
+      - name: Lint backend
+        run: npm --workspace backend run lint
+
+      # 5. Compilar backend (TypeScript)
+      - name: Build backend
+        run: npm --workspace backend run build
+
+      # 6. Tests backend
+      - name: Test backend
+        run: npm --workspace backend test
+
+      # 7. Auditoría de seguridad
+      - name: Audit backend dependencies
+        run: npm audit --workspace backend --audit-level=high

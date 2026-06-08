@@ -1,7 +1,18 @@
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/**
+ * Utilidades de rutas del sistema de archivos (compatibles con CommonJS).
+ *
+ * Nota: en CommonJS `__dirname` está disponible globalmente, por lo que no se
+ * usa `import.meta.url` (que solo existe en módulos ES y rompería la compilación
+ * con `"module": "commonjs"`).
+ */
 
-export { __dirname, __filename };
+/** Raíz del paquete backend (un nivel por encima de `src/` o `dist/`). */
+export const projectRoot = path.resolve(__dirname, '../..');
+
+/** Resuelve una ruta absoluta a partir de segmentos relativos a la raíz del backend. */
+export function resolveFromRoot(...segments: string[]): string {
+  return path.resolve(projectRoot, ...segments);
+}
+

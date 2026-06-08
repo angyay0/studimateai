@@ -1,35 +1,38 @@
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import path from 'path';
+import { env, corsConfig, serverConfig, assertEnvValid } from './config';
+import { checkDatabaseConnection, closePool } from './config/database';
+import { logger } from './utils/logger';
+import apiRouter from './api';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
-// Load environment variables
-dotenv.config();
+// Validar la configuración de entorno antes de arrancar (aborta si falta algo crítico en producción).
+assertEnvValid({
+  warn: (message) => logger.warn(message),
+  error: (message) => logger.error(message),
+});
 
 const app: Express = express();
-const PORT = process.env.BACKEND_PORT || 5000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// Middleware
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true,
-}));
+// Middlewares globales
+app.use(cors(corsConfig));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Health check endpoint
-app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ 
-    status: 'ok', 
-    environment: NODE_ENV,
+// Health check (incluye estado de la base de datos)
+app.get('/api/health', async (_req: Request, res: Response) => {
+  const databaseConnected = await checkDatabaseConnection();
+  res.json({
+    status: 'ok',
+    environment: env.nodeEnv,
+    database: databaseConnected ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString(),
   });
 });
 
-// API Routes (to be implemented)
-app.get('/api', (req: Request, res: Response) => {
-  res.json({ 
+// Información de la API
+app.get('/api', (_req: Request, res: Response) => {
+  res.json({
     message: 'StudyMate AI API',
     version: '1.0.0',
     endpoints: {
@@ -37,39 +40,37 @@ app.get('/api', (req: Request, res: Response) => {
       documents: '/api/documents',
       chat: '/api/chat',
       quizzes: '/api/quizzes',
-      exams: '/api/exams',
       health: '/api/health',
     },
   });
 });
 
-// Error handling middleware
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: NODE_ENV === 'development' ? err.message : undefined,
+// Rutas de la API
+app.use('/api', apiRouter);
+
+// Manejo de rutas no encontradas y de errores (deben ir al final).
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// Arranque del servidor
+const server = app.listen(serverConfig.port, () => {
+  logger.info(
+    `StudyMate AI backend escuchando en http://localhost:${serverConfig.port} (${env.nodeEnv})`
+  );
+  logger.info(`Documentación de endpoints: http://localhost:${serverConfig.port}/api`);
+});
+
+// Apagado ordenado: cierra el servidor HTTP y el pool de la base de datos.
+function shutdown(signal: string): void {
+  logger.info(`${signal} recibido. Cerrando el servidor...`);
+  server.close(async () => {
+    await closePool();
+    logger.info('Servidor cerrado correctamente.');
+    process.exit(0);
   });
-});
+}
 
-// 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({ error: 'Route not found', path: req.path });
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════╗
-║     StudyMate AI - Backend Server      ║
-╚════════════════════════════════════════╝
-  
-  Server running on: http://localhost:${PORT}
-  Environment: ${NODE_ENV}
-  API Docs: http://localhost:${PORT}/api
-  
-  Ready to receive requests...
-  `);
-});
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 export default app;

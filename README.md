@@ -109,6 +109,10 @@ studymate-ai/
 ### Con Docker
 
 ```bash
+
+# Reconstruye la imagen Docker del servidor
+docker compose build --no-cache backend
+
 # Iniciar todos los servicios (PostgreSQL, Backend, Frontend)
 docker-compose up -d
 

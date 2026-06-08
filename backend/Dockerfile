@@ -1,5 +1,5 @@
 # Use official Node.js runtime as base image
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Set working directory
 WORKDIR /app
@@ -7,8 +7,11 @@ WORKDIR /app
 # Copy root package files
 COPY package*.json ./
 
-# Install dependencies for all workspaces
-RUN npm ci
+# Copy backend and frontend package.json for workspaces
+COPY backend/package.json ./backend/package.json
+
+# Install dependencies for all workspaces (including devDependencies)
+RUN npm install --workspaces --include=dev
 
 # Copy backend source
 COPY backend ./backend
