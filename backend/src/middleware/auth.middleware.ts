@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthError, AuthService } from '../services/AuthService';
+// Middleware de Autenticación
+import { ApiError } from '../utils/ApiError';
 
 declare global {
   namespace Express {
@@ -43,6 +45,12 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
     res.status(401).json({ error: 'Invalid session' });
   }
+
+  // TODO (HU-03): verificar el JWT con AuthService.verifyToken(token)
+  // y asignar el resultado a req.user antes de continuar:
+  //   req.user = AuthService.verifyToken(token);
+  //   next();
+  next(ApiError.notImplemented('Verificación de JWT pendiente (HU-03).'));
 }
 
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
@@ -58,3 +66,4 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
 
   next();
 }
+

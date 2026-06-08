@@ -38,9 +38,11 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/src:/app/backend/src
+      - backend_node_modules:/app/backend/node_modules
     networks:
       - studymate_network
     command: npm --workspace backend run dev
+    restart: unless-stopped
 
   # Frontend
   frontend:
@@ -60,6 +62,8 @@ services:
     networks:
       - studymate_network
     command: npm --workspace front run dev
+    command: npm --workspace frontend run dev
+    restart: unless-stopped
 
 networks:
   studymate_network:
@@ -67,4 +71,6 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  backend_node_modules:
     driver: local
