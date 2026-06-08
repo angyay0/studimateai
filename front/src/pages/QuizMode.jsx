@@ -3,7 +3,7 @@ import { Target, Clock, Award, ChevronRight } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { quizzesAPI } from '../services/api'
 
-function QuizMode() {
+function QuizMode({ onLogout }) {
   const [quizzes, setQuizzes] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -22,6 +22,17 @@ function QuizMode() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex h-screen">
+        <Sidebar onLogout={onLogout} />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-gray-600">Loading quizzes...</p>
+        </div>
+      </div>
+    )
+  }
+
   const getDifficultyColor = (difficulty) => {
     switch (difficulty) {
       case 'Easy':
@@ -37,7 +48,7 @@ function QuizMode() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar onLogout={onLogout} />
       
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-8">

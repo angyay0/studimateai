@@ -6,12 +6,11 @@ WORKDIR /app
 
 # Copy root package files
 COPY package*.json ./
+COPY backend/package*.json ./backend/
+COPY front/package*.json ./front/
 
-# Copy backend and frontend package.json for workspaces
-COPY backend/package.json ./backend/package.json
-
-# Install dependencies for all workspaces (including devDependencies)
-RUN npm install --workspaces --include=dev
+# Install dependencies for all workspaces
+RUN npm install
 
 # Copy backend source
 COPY backend ./backend

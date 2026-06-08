@@ -1,31 +1,16 @@
-# Build stage
-FROM node:18-alpine as build
+# Development image for the Vite workspace
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
+COPY backend/package*.json ./backend/
+COPY front/package*.json ./front/
 
-# Install dependencies
-RUN npm ci
+RUN npm install
 
-# Copy source code
-COPY . .
+COPY front ./front
 
-# Build the application
-RUN npm run build
+EXPOSE 3000
 
-# Production stage
-FROM nginx:alpine
-
-# Copy built assets from build stage
-COPY --from=build /app/dist /usr/share/nginx/html
-
-# Copy nginx configuration (optional)
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Expose port 80
-EXPOSE 80
-
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "--workspace", "front", "run", "dev"]

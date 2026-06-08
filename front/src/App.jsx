@@ -6,24 +6,73 @@ import Dashboard from './pages/Dashboard'
 import UploadGenerate from './pages/UploadGenerate'
 import QuizMode from './pages/QuizMode'
 import Progress from './pages/Progress'
+import { authAPI } from './services/api'
+
+const idleTimeoutMs = 45 * 60 * 1000
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(authAPI.hasSession())
+  const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken')
-    if (token) {
-      setIsAuthenticated(true)
+    const validateExistingSession = async () => {
+      if (!authAPI.hasSession()) {
+        setCheckingSession(false)
+        return
+      }
+
+      try {
+        await authAPI.validateSession()
+        setIsAuthenticated(true)
+      } catch {
+        setIsAuthenticated(false)
+      } finally {
+        setCheckingSession(false)
+      }
     }
+
+    validateExistingSession()
   }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return undefined
+    }
+
+    let timeoutId
+
+    const resetIdleTimer = () => {
+      window.clearTimeout(timeoutId)
+      timeoutId = window.setTimeout(() => {
+        handleLogout()
+      }, idleTimeoutMs)
+    }
+
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart']
+    events.forEach(event => window.addEventListener(event, resetIdleTimer))
+    resetIdleTimer()
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      events.forEach(event => window.removeEventListener(event, resetIdleTimer))
+    }
+  }, [isAuthenticated])
 
   const handleLogin = () => {
     setIsAuthenticated(true)
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken')
+  const handleLogout = async () => {
+    await authAPI.logout()
     setIsAuthenticated(false)
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-600">Checking session...</p>
+      </div>
+    )
   }
 
   return (

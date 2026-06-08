@@ -1,9 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, FileText, Target, TrendingUp, Award, Settings, Sparkles } from 'lucide-react'
+import { LayoutDashboard, FileText, Target, TrendingUp, Award, Settings, Sparkles, LogOut } from 'lucide-react'
 import { authAPI } from '../services/api'
 import { useEffect, useState } from 'react'
 
-function Sidebar() {
+function Sidebar({ onLogout }) {
   const location = useLocation()
   const [user, setUser] = useState(null)
   
@@ -70,6 +70,16 @@ function Sidebar() {
               <p className="text-sm text-gray-600">{user.plan || 'Free plan'}</p>
             </div>
           </div>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              Log out
+            </button>
+          )}
         </div>
       )}
     </div>

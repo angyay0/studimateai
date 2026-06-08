@@ -223,6 +223,7 @@ VITE_API_URL=http://localhost:5000
 Consulta las siguientes guías para más información:
 
 - [📖 Guía de Instalación y Setup](docs/SETUP.md)
+- [Autenticacion, sesiones y recuperacion de contrasena](docs/AUTHENTICATION.md)
 - [🏗️ Documentación de Arquitectura](docs/ARCHITECTURE.md)
 - [📡 API Reference](docs/API.md)
 - [💻 Guía de Desarrollo](docs/DEVELOPMENT.md)

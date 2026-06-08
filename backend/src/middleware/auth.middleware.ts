@@ -1,9 +1,8 @@
-// Middleware de Autenticación
-
 import { Request, Response, NextFunction } from 'express';
+import { AuthError, AuthService } from '../services/AuthService';
+// Middleware de Autenticación
 import { ApiError } from '../utils/ApiError';
 
-// Extender tipos de Express
 declare global {
   namespace Express {
     interface Request {
@@ -11,29 +10,40 @@ declare global {
         id: string;
         email: string;
         role: string;
+        sessionId: string;
       };
     }
   }
 }
 
-/**
- * Protege rutas que requieren autenticación.
- *
- * Falla de forma segura ("fail closed"): si falta el token responde 401, y
- * mientras la verificación de JWT no esté implementada responde 501 en lugar de
- * aceptar tokens sin validar.
- */
-export function authMiddleware(req: Request, _res: Response, next: NextFunction): void {
+function getBearerToken(req: Request) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    next(ApiError.unauthorized('Falta el encabezado Authorization con formato "Bearer <token>".'));
-    return;
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    return null;
   }
 
-  const token = authHeader.slice('Bearer '.length).trim();
-  if (!token) {
-    next(ApiError.unauthorized('Token no proporcionado.'));
-    return;
+  return authHeader.slice('Bearer '.length);
+}
+
+export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  try {
+    const token = getBearerToken(req);
+
+    if (!token) {
+      res.status(401).json({ error: 'Missing authorization header' });
+      return;
+    }
+
+    req.user = await AuthService.verifySessionToken(token);
+    next();
+  } catch (error) {
+    if (error instanceof AuthError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+
+    res.status(401).json({ error: 'Invalid session' });
   }
 
   // TODO (HU-03): verificar el JWT con AuthService.verifyToken(token)
@@ -43,17 +53,17 @@ export function authMiddleware(req: Request, _res: Response, next: NextFunction)
   next(ApiError.notImplemented('Verificación de JWT pendiente (HU-03).'));
 }
 
-/**
- * Autenticación opcional: adjunta el usuario si hay un token válido, pero nunca
- * bloquea la petición. Útil para endpoints públicos con comportamiento extra
- * cuando el usuario está autenticado.
- */
-export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    // TODO (HU-03): intentar verificar el token y asignar req.user si es válido.
-    // Cualquier error debe ignorarse silenciosamente para no bloquear la petición.
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  try {
+    const token = getBearerToken(req);
+
+    if (token) {
+      req.user = await AuthService.verifySessionToken(token);
+    }
+  } catch {
+    // Continue without auth for optional routes.
   }
+
   next();
 }
 

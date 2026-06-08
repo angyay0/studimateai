@@ -1,3 +1,19 @@
+import { Pool, QueryResultRow } from 'pg';
+
+const connectionString = process.env.DATABASE_URL;
+
+export const pool = connectionString
+  ? new Pool({ connectionString })
+  : new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      database: process.env.DB_NAME || 'studymate_ai',
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+    });
+
+export async function query<T extends QueryResultRow>(text: string, params?: unknown[]) {
+  return pool.query<T>(text, params);
 /**
  * Conexión a PostgreSQL mediante un pool de `pg`.
  *
