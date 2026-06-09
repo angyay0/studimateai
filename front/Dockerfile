@@ -11,7 +11,7 @@ COPY package*.json ./
 
 RUN npm install
 
-COPY front ./front
+COPY . ./
 
 EXPOSE 3000
 
