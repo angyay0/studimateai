@@ -4,7 +4,8 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-COPY backend/package*.json ./backend/
+# Needs to be independant for the CICD
+#COPY backend/package*.json ./backend/
 COPY front/package*.json ./front/
 
 RUN npm install
