@@ -1,6 +1,10 @@
 # Build stage
 FROM node:18-alpine as build
 
+# Build arguments from CICD
+ARG VITE_API_URL
+ARG VITE_APP_ENV=production
+
 WORKDIR /app
 
 # Copy package files
@@ -11,6 +15,10 @@ RUN npm ci
 
 # Copy source code
 COPY . .
+
+# Set environment variables for Vite build
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_APP_ENV=$VITE_APP_ENV
 
 # Build the application
 RUN npm run build
@@ -24,8 +32,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # Copy nginx configuration (optional)
 # COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 80
-EXPOSE 80
+# Expose port 3000
+EXPOSE 3000
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
