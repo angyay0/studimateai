@@ -6,7 +6,8 @@ WORKDIR /app
 COPY package*.json ./
 # Needs to be independant for the CICD
 #COPY backend/package*.json ./backend/
-COPY front/package*.json ./front/
+# Needs to use as package not module style
+#COPY front/package*.json ./front/
 
 RUN npm install
 
