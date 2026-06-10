@@ -153,6 +153,8 @@ export const env = Object.freeze({
   openaiApiKey: getString('OPENAI_API_KEY', ''),
   openaiModel: getString('OPENAI_MODEL', 'gpt-4-turbo'),
   embeddingModel: getString('EMBEDDING_MODEL', 'text-embedding-3-small'),
+  openaiRagModel: getString('OPENAI_RAG_MODEL', 'gpt-4o-mini'),
+  openaiVectorStorePrefix: getString('OPENAI_VECTOR_STORE_PREFIX', 'exam-rag'),
 
   // Autenticación
   jwtSecret,
@@ -162,6 +164,8 @@ export const env = Object.freeze({
   maxFileSize: getNumber('MAX_FILE_SIZE', 20971520), // 20 MB
   allowedFileTypes: getList('ALLOWED_FILE_TYPES', ['pdf']),
   uploadDir: getString('UPLOAD_DIR', 'uploads'),
+  storageProvider: getString('STORAGE_PROVIDER', 'local'),
+  storageBucket: getString('STORAGE_BUCKET', ''),
 });
 
 export type Env = typeof env;

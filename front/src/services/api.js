@@ -230,28 +230,86 @@ export const authAPI = {
 }
 
 export const documentsAPI = {
-  getAll: async () => {
-    await delay(500)
-    return mockDocuments
+  getAll: async (courseId = null) => {
+    const url = courseId 
+      ? `${API_URL}/api/documents?courseId=${courseId}`
+      : `${API_URL}/api/documents`
+    
+    const response = await fetch(url, {
+      headers: {
+        ...authAPI.getAuthHeader()
+      }
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch documents')
+    }
+
+    return data.documents.map(doc => ({
+      id: doc.id,
+      title: doc.originalFilename.replace(/\.(pdf|txt|md|docx)$/i, ''),
+      originalFilename: doc.originalFilename,
+      mimeType: doc.mimeType,
+      sizeBytes: doc.sizeBytes,
+      status: doc.status,
+      errorMessage: doc.errorMessage,
+      uploadedAt: new Date(doc.createdAt).toLocaleString(),
+      icon: doc.mimeType === 'application/pdf' ? '📄' : '📝',
+      pages: null
+    }))
   },
   
   upload: async (file, config = {}) => {
-    await delay(2000)
-    
-    const newDoc = {
-      id: Date.now(),
-      title: file.name.replace('.pdf', ''),
-      pages: config.pages || Math.floor(Math.random() * 100) + 20,
-      quizzes: 0,
-      uploadedAt: 'Just now',
-      icon: '📄'
+    const formData = new FormData()
+    formData.append('file', file)
+    if (config.courseId) {
+      formData.append('courseId', config.courseId)
     }
-    
-    return newDoc
+
+    const response = await fetch(`${API_URL}/api/documents/upload`, {
+      method: 'POST',
+      headers: {
+        ...authAPI.getAuthHeader()
+      },
+      body: formData
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to upload document')
+    }
+
+    const doc = data.document
+    return {
+      id: doc.id,
+      title: doc.originalFilename.replace(/\.(pdf|txt|md|docx)$/i, ''),
+      originalFilename: doc.originalFilename,
+      mimeType: doc.mimeType,
+      sizeBytes: doc.sizeBytes,
+      status: doc.status,
+      errorMessage: doc.errorMessage,
+      uploadedAt: 'Just now',
+      icon: doc.mimeType === 'application/pdf' ? '📄' : '📝',
+      pages: null
+    }
   },
   
-  delete: async () => {
-    await delay(500)
+  delete: async (documentId) => {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}`, {
+      method: 'DELETE',
+      headers: {
+        ...authAPI.getAuthHeader()
+      }
+    })
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to delete document')
+    }
+
     return { success: true }
   }
 }
@@ -263,26 +321,54 @@ export const quizzesAPI = {
   },
   
   generate: async (documentId, config) => {
-    await delay(3000)
-    
-    const questions = []
-    const questionCount = config.questionCount || 20
-    
-    for (let i = 0; i < questionCount; i++) {
-      questions.push({
-        id: i + 1,
-        type: config.questionTypes[Math.floor(Math.random() * config.questionTypes.length)],
-        question: `Sample question ${i + 1} about the topic`,
-        options: ['Option A', 'Option B', 'Option C', 'Option D'],
-        correctAnswer: 0,
-        difficulty: config.difficulty
-      })
+    const difficultyMap = {
+      'Easy': 'easy',
+      'Medium': 'medium',
+      'Hard': 'hard',
+      'Mixed': 'medium'
     }
-    
+
+    const typeMap = {
+      'Multiple Choice': 'multiple_choice',
+      'True / False': 'true_false',
+      'Fill in the blank': 'fill_blank',
+      'Open-ended': 'open_ended'
+    }
+
+    const response = await fetch(`${API_URL}/api/exams/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authAPI.getAuthHeader()
+      },
+      body: JSON.stringify({
+        documentIds: documentId ? [documentId] : undefined,
+        questionCount: config.questionCount || 20,
+        difficulty: difficultyMap[config.difficulty] || 'medium',
+        questionTypes: config.questionTypes?.map(t => typeMap[t] || 'multiple_choice'),
+        topic: config.focusTopic || undefined,
+        courseId: config.courseId || undefined
+      })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to generate quiz')
+    }
+
     return {
       id: Date.now(),
       documentId,
-      questions,
+      questions: data.questions.map((q, i) => ({
+        id: i + 1,
+        type: q.questionType,
+        question: q.questionText,
+        options: q.options || [],
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+        difficulty: q.difficulty
+      })),
       config
     }
   },
