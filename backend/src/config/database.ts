@@ -1,19 +1,3 @@
-import { Pool, QueryResultRow } from 'pg';
-
-const connectionString = process.env.DATABASE_URL;
-
-export const pool = connectionString
-  ? new Pool({ connectionString })
-  : new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      database: process.env.DB_NAME || 'studymate_ai',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-    });
-
-export async function query<T extends QueryResultRow>(text: string, params?: unknown[]) {
-  return pool.query<T>(text, params);
 /**
  * Conexión a PostgreSQL mediante un pool de `pg`.
  *
@@ -22,7 +6,7 @@ export async function query<T extends QueryResultRow>(text: string, params?: unk
  * de datos todavía no esté disponible (útil en desarrollo y para el health check).
  */
 
-import { Pool } from 'pg';
+import { Pool, QueryResultRow } from 'pg';
 import { databaseConfig, env } from './index';
 
 let pool: Pool | null = null;
@@ -66,4 +50,11 @@ export async function closePool(): Promise<void> {
     await pool.end();
     pool = null;
   }
+}
+
+/**
+ * Ejecuta una query SQL en la base de datos.
+ */
+export async function query<T extends QueryResultRow = any>(text: string, params?: unknown[]) {
+  return getPool().query<T>(text, params);
 }
