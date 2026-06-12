@@ -58,6 +58,25 @@ function getUploadDir(): string {
   return dir;
 }
 
+/**
+ * Limpia el nombre original del archivo para guardar un título legible:
+ *  - Quita la extensión (.pdf).
+ *  - Normaliza acentos (á → a, ñ → n, etc.).
+ *  - Elimina cualquier carácter que no sea letra, número o espacio.
+ *  - Colapsa espacios múltiples y recorta los extremos.
+ * Si tras limpiar queda vacío, devuelve "Documento".
+ */
+function sanitizeTitle(originalName: string): string {
+  const withoutExt = originalName.replace(/\.[^/.]+$/, '');
+  const cleaned = withoutExt
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // quita marcas de acento
+    .replace(/[^a-zA-Z0-9 ]+/g, ' ') // solo letras, números y espacios
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.length > 0 ? cleaned : 'Documento';
+}
+
 export class DocumentService {
   /**
    * Guarda el archivo en disco, extrae metadatos y crea el registro en BD.
@@ -87,12 +106,13 @@ export class DocumentService {
 
     // 3. Insertar en base de datos
     const pool = getPool();
+    const cleanTitle = sanitizeTitle(file.originalname);
     const result = await pool.query<Record<string, unknown>>(
       `INSERT INTO documents
          (user_id, original_name, stored_name, file_size, mime_type, status, page_count)
        VALUES ($1, $2, $3, $4, $5, 'pending', $6)
        RETURNING *`,
-      [userId, file.originalname, storedName, file.size, file.mimetype, pageCount]
+      [userId, cleanTitle, storedName, file.size, file.mimetype, pageCount]
     );
 
     const doc = rowToDocument(result.rows[0]);

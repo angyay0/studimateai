@@ -134,13 +134,15 @@ function Dashboard({ onLogout }) {
 
               <div className="space-y-4">
                 {documents.length === 0 ? (
-                  <div className="card border-2 border-dashed border-gray-200 bg-gray-50/50">
-                    <div className="flex flex-col items-center text-center py-8">
-                      <div className="w-14 h-14 bg-primary-50 rounded-2xl flex items-center justify-center mb-4">
-                        <FileText className="w-7 h-7 text-primary-400" />
+                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-50/60 via-white to-purple-50/40 border border-gray-100 shadow-sm">
+                    <div className="flex flex-col items-center text-center px-6 py-12">
+                      <div className="w-16 h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center mb-5">
+                        <FileText className="w-8 h-8 text-primary-300" />
                       </div>
-                      <h3 className="font-semibold text-gray-900 mb-1">Aún no hay documentos recientes</h3>
-                      <p className="text-sm text-gray-500 max-w-xs">
+                      <h3 className="text-lg font-semibold text-gray-400/90 mb-1.5 tracking-tight">
+                        No hay documentos recientes
+                      </h3>
+                      <p className="text-sm text-gray-400/70 max-w-xs leading-relaxed">
                         Sube tu primer PDF para empezar a generar quizzes y repasar.
                       </p>
                     </div>
