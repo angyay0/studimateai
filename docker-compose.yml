@@ -62,7 +62,6 @@ services:
     networks:
       - studymate_network
     command: npm --workspace front run dev
-    command: npm --workspace frontend run dev
     restart: unless-stopped
 
 networks:

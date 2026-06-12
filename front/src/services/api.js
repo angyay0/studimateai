@@ -231,27 +231,72 @@ export const authAPI = {
 
 export const documentsAPI = {
   getAll: async () => {
-    await delay(500)
-    return mockDocuments
-  },
-  
-  upload: async (file, config = {}) => {
-    await delay(2000)
-    
-    const newDoc = {
-      id: Date.now(),
-      title: file.name.replace('.pdf', ''),
-      pages: config.pages || Math.floor(Math.random() * 100) + 20,
-      quizzes: 0,
-      uploadedAt: 'Just now',
-      icon: '📄'
+    const response = await fetch(`${API_URL}/api/documents`, {
+      headers: { ...authAPI.getAuthHeader() }
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.error || 'Error al obtener documentos')
     }
-    
-    return newDoc
+    return response.json()
   },
-  
-  delete: async () => {
-    await delay(500)
+
+  /**
+   * Sube un archivo PDF con seguimiento de progreso.
+   * @param {File} file  Archivo seleccionado
+   * @param {Function} onProgress  Callback (0-100) que se llama durante la subida
+   * @returns {Promise<object>} Documento creado
+   */
+  upload: (file, onProgress = () => {}) => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100)
+          onProgress(percent)
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText))
+          } catch {
+            reject(new Error('Respuesta inválida del servidor'))
+          }
+        } else {
+          let message = 'Error al subir el archivo'
+          try {
+            const body = JSON.parse(xhr.responseText)
+            message = body.error || body.message || message
+          } catch { /* ignore */ }
+          reject(new Error(message))
+        }
+      })
+
+      xhr.addEventListener('error', () => reject(new Error('Error de red al subir el archivo')))
+      xhr.addEventListener('abort', () => reject(new Error('Subida cancelada')))
+
+      const token = getAuthToken()
+      xhr.open('POST', `${API_URL}/api/documents/upload`)
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.send(formData)
+    })
+  },
+
+  delete: async (documentId) => {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}`, {
+      method: 'DELETE',
+      headers: { ...authAPI.getAuthHeader() }
+    })
+    if (!response.ok && response.status !== 204) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.error || 'Error al eliminar el documento')
+    }
     return { success: true }
   }
 }

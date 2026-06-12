@@ -16,10 +16,15 @@ let pool: Pool | null = null;
  */
 export function getPool(): Pool {
   if (!pool) {
+    const connStr = databaseConfig.connectionString ?? '';
+    const requireSsl =
+      env.isProduction || connStr.includes('sslmode=require');
+
     pool = new Pool({
-      connectionString: databaseConfig.connectionString,
-      // En producción muchos proveedores gestionados requieren SSL.
-      ssl: env.isProduction ? { rejectUnauthorized: false } : undefined,
+      connectionString: connStr,
+      // SSL requerido en producción y cuando la cadena de conexión lo indica
+      // (ej. bases de datos gestionadas como DigitalOcean).
+      ssl: requireSsl ? { rejectUnauthorized: false } : undefined,
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
