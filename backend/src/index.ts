@@ -24,8 +24,17 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http:/
   .map((origin) => origin.trim());
 
 // Middleware
+// En desarrollo, permitir cualquier origen para facilitar desarrollo local.
+// En producción, usar whitelist estricta.
 app.use(cors({
   origin(origin, callback) {
+    // En desarrollo, permitir cualquier origen (más fácil para testing)
+    if (NODE_ENV === 'development') {
+      callback(null, true);
+      return;
+    }
+
+    // En producción, verificar contra whitelist
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
