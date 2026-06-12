@@ -68,23 +68,20 @@ export class OpenAIRagService {
       return existingResult.rows[0];
     }
 
-    const client = this.getClient();
     const storeName = courseId
       ? `${env.openaiVectorStorePrefix}-${userId.slice(0, 8)}-course-${courseId.slice(0, 8)}`
       : `${env.openaiVectorStorePrefix}-${userId.slice(0, 8)}`;
 
-    logger.info(`Creando vector store en OpenAI: ${storeName}`);
+    logger.info(`Creando vector store (usando assistant): ${storeName}`);
 
-    const vectorStore = await client.beta.vectorStores.create({
-      name: storeName,
-    });
+    const vectorStoreId = `vs-${userId.slice(0, 16)}-${Date.now()}`;
 
     const insertResult = await query<VectorStore>(
       `INSERT INTO vector_stores (user_id, course_id, openai_vector_store_id, name)
        VALUES ($1, $2, $3, $4)
        RETURNING id, user_id as "userId", course_id as "courseId", 
                  openai_vector_store_id as "openaiVectorStoreId", name`,
-      [userId, courseIdValue, vectorStore.id, storeName]
+      [userId, courseIdValue, vectorStoreId, storeName]
     );
 
     return insertResult.rows[0];
@@ -116,48 +113,12 @@ export class OpenAIRagService {
 
     const vectorStore = await this.getOrCreateVectorStore({ userId, courseId });
 
-    logger.info(`Adjuntando archivo al vector store: ${vectorStore.openaiVectorStoreId}`);
-
-    const vectorStoreFile = await client.beta.vectorStores.files.create(
-      vectorStore.openaiVectorStoreId,
-      {
-        file_id: uploadedFile.id,
-      }
-    );
-
-    logger.info(`Archivo adjuntado al vector store: ${vectorStoreFile.id}`);
-
-    let attempts = 0;
-    const maxAttempts = 30;
-    while (attempts < maxAttempts) {
-      const fileStatus = await client.beta.vectorStores.files.retrieve(
-        vectorStore.openaiVectorStoreId,
-        vectorStoreFile.id
-      );
-
-      if (fileStatus.status === 'completed') {
-        logger.info(`Archivo indexado correctamente: ${vectorStoreFile.id}`);
-        break;
-      }
-
-      if (fileStatus.status === 'failed' || fileStatus.status === 'cancelled') {
-        throw ApiError.internal(
-          `Indexación del archivo falló con status: ${fileStatus.status}`
-        );
-      }
-
-      attempts++;
-      if (attempts >= maxAttempts) {
-        throw ApiError.internal('Timeout esperando indexación del archivo');
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
+    logger.info(`Archivo listo para usar con file_search`);
 
     return {
       openaiFileId: uploadedFile.id,
       openaiVectorStoreId: vectorStore.openaiVectorStoreId,
-      openaiVectorStoreFileId: vectorStoreFile.id,
+      openaiVectorStoreFileId: uploadedFile.id,
     };
   }
 
@@ -168,21 +129,38 @@ export class OpenAIRagService {
     documentIds?: string[];
     topK?: number;
   }): Promise<QueryResult> {
-    const { userId, courseId, query: userQuery, topK = 5 } = params;
+    const { userId, courseId, query: userQuery, documentIds } = params;
     const client = this.getClient();
 
-    const vectorStore = await this.getOrCreateVectorStore({ userId, courseId });
+    let fileIds: string[] = [];
+    
+    if (documentIds && documentIds.length > 0) {
+      const docsResult = await query(
+        `SELECT openai_file_id FROM documents 
+         WHERE id = ANY($1) AND user_id = $2 AND openai_file_id IS NOT NULL`,
+        [documentIds, userId]
+      );
+      fileIds = docsResult.rows.map((row: any) => row.openai_file_id);
+    } else {
+      const docsResult = await query(
+        `SELECT openai_file_id FROM documents 
+         WHERE user_id = $1 AND status = 'indexed' AND openai_file_id IS NOT NULL
+         ${courseId ? 'AND course_id = $2' : ''}
+         ORDER BY created_at DESC LIMIT 10`,
+        courseId ? [userId, courseId] : [userId]
+      );
+      fileIds = docsResult.rows.map((row: any) => row.openai_file_id);
+    }
 
-    logger.info(`Consultando documentos con file_search: ${userQuery}`);
+    if (fileIds.length === 0) {
+      throw ApiError.badRequest('No hay documentos indexados disponibles');
+    }
+
+    logger.info(`Consultando ${fileIds.length} documentos con file_search: ${userQuery}`);
 
     const assistant = await client.beta.assistants.create({
       model: env.openaiRagModel,
       tools: [{ type: 'file_search' }],
-      tool_resources: {
-        file_search: {
-          vector_store_ids: [vectorStore.openaiVectorStoreId],
-        },
-      },
     });
 
     const thread = await client.beta.threads.create({
@@ -190,6 +168,10 @@ export class OpenAIRagService {
         {
           role: 'user',
           content: userQuery,
+          attachments: fileIds.map(fileId => ({
+            file_id: fileId,
+            tools: [{ type: 'file_search' as const }],
+          })),
         },
       ],
     });
@@ -245,6 +227,7 @@ export class OpenAIRagService {
     const {
       userId,
       courseId,
+      documentIds,
       topic,
       questionCount,
       difficulty = 'medium',
@@ -252,7 +235,29 @@ export class OpenAIRagService {
     } = params;
     const client = this.getClient();
 
-    const vectorStore = await this.getOrCreateVectorStore({ userId, courseId });
+    let fileIds: string[] = [];
+    
+    if (documentIds && documentIds.length > 0) {
+      const docsResult = await query(
+        `SELECT openai_file_id FROM documents 
+         WHERE id = ANY($1) AND user_id = $2 AND openai_file_id IS NOT NULL`,
+        [documentIds, userId]
+      );
+      fileIds = docsResult.rows.map((row: any) => row.openai_file_id);
+    } else {
+      const docsResult = await query(
+        `SELECT openai_file_id FROM documents 
+         WHERE user_id = $1 AND status = 'indexed' AND openai_file_id IS NOT NULL
+         ${courseId ? 'AND course_id = $2' : ''}
+         ORDER BY created_at DESC LIMIT 10`,
+        courseId ? [userId, courseId] : [userId]
+      );
+      fileIds = docsResult.rows.map((row: any) => row.openai_file_id);
+    }
+
+    if (fileIds.length === 0) {
+      throw ApiError.badRequest('No hay documentos indexados disponibles');
+    }
 
     const prompt = `Genera exactamente ${questionCount} preguntas de examen basadas ÚNICAMENTE en el contenido de los documentos proporcionados.
 
@@ -285,16 +290,11 @@ Responde ÚNICAMENTE con un JSON válido en este formato:
 
 NO incluyas texto adicional, solo el JSON.`;
 
-    logger.info(`Generando ${questionCount} preguntas de examen`);
+    logger.info(`Generando ${questionCount} preguntas de examen usando ${fileIds.length} documentos`);
 
     const assistant = await client.beta.assistants.create({
       model: env.openaiRagModel,
       tools: [{ type: 'file_search' }],
-      tool_resources: {
-        file_search: {
-          vector_store_ids: [vectorStore.openaiVectorStoreId],
-        },
-      },
       instructions: 'Eres un experto en crear preguntas de examen basadas en material educativo.',
     });
 
@@ -303,6 +303,10 @@ NO incluyas texto adicional, solo el JSON.`;
         {
           role: 'user',
           content: prompt,
+          attachments: fileIds.map(fileId => ({
+            file_id: fileId,
+            tools: [{ type: 'file_search' as const }],
+          })),
         },
       ],
     });
