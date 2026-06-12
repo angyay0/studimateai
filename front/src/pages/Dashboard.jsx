@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, Target, Clock, Star, Upload, ChevronRight, Flame } from 'lucide-react'
+import { BookOpen, Target, Clock, Star, Upload, ChevronRight, Flame, FileText } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { statsAPI, documentsAPI, quizzesAPI, authAPI } from '../services/api'
 
@@ -16,17 +16,30 @@ function Dashboard({ onLogout }) {
   }, [])
 
   const loadDashboardData = async () => {
+    const currentUser = authAPI.getCurrentUser()
+    setUser(currentUser)
+
     try {
       const [statsData, docsData, quizzesData] = await Promise.all([
         statsAPI.getDashboard(),
         documentsAPI.getAll(),
         quizzesAPI.getUpcoming()
       ])
-      
-      setStats(statsData)
-      setDocuments(docsData.slice(0, 3))
-      setUpcomingQuizzes(quizzesData)
-      setUser(authAPI.getCurrentUser())
+
+      if (statsData) {
+        setStats(statsData)
+      }
+
+      if (docsData) {
+        setDocuments(docsData.slice(0, 3))
+
+      } else {
+        setDocuments([])
+      }
+
+      if (quizzesData) {
+        setUpcomingQuizzes(quizzesData)
+      }
     } catch (error) {
       console.error('Error loading dashboard:', error)
     } finally {
@@ -66,7 +79,7 @@ function Dashboard({ onLogout }) {
               <div>
                 <p className="text-gray-600">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                 <h1 className="text-3xl font-bold text-gray-900">
-                  {getGreeting()}, {user?.name || 'Maria'}! 👋
+                  {getGreeting()}, {user?.name || user?.firstName || 'friend'}! 👋
                 </h1>
               </div>
               <div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-full border border-orange-200">
@@ -133,22 +146,20 @@ function Dashboard({ onLogout }) {
               </div>
 
               <div className="space-y-4">
-                {documents.length === 0 ? (
-                  <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-50/60 via-white to-purple-50/40 border border-gray-100 shadow-sm">
-                    <div className="flex flex-col items-center text-center px-6 py-12">
-                      <div className="w-16 h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center mb-5">
-                        <FileText className="w-8 h-8 text-primary-300" />
-                      </div>
-                      <h3 className="text-lg font-semibold text-gray-400/90 mb-1.5 tracking-tight">
-                        No hay documentos recientes
-                      </h3>
-                      <p className="text-sm text-gray-400/70 max-w-xs leading-relaxed">
-                        Sube tu primer PDF para empezar a generar quizzes y repasar.
-                      </p>
+                {documents.length === 0 && (
+                  <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm font-semibold text-gray-700">No hay documentos reales aun</p>
+                      <span className="text-xs text-gray-400">Mostrando ejemplos</span>
                     </div>
+                    <Link to="/upload" className="w-full flex items-center justify-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-primary-700 font-medium hover:bg-primary-100 transition-colors">
+                      <Upload className="w-4 h-4" />
+                      Upload new document
+                    </Link>
                   </div>
-                ) : (
-                  documents.map((doc) => (
+                )}
+
+                {(documents.length > 0 ? documents : mockDocuments).map((doc) => (
                     <div key={doc.id} className="card hover:shadow-md transition-shadow">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 min-w-0">
@@ -170,15 +181,16 @@ function Dashboard({ onLogout }) {
                         </Link>
                       </div>
                     </div>
-                  ))
-                )}
+                  ))}
 
-                <Link to="/upload" className="card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
-                  <div className="flex items-center justify-center gap-3 py-4">
-                    <Upload className="w-5 h-5 text-gray-400" />
-                    <span className="text-gray-600 font-medium">Upload new document</span>
-                  </div>
-                </Link>
+                {documents.length > 0 && (
+                  <Link to="/upload" className="card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
+                    <div className="flex items-center justify-center gap-3 py-4">
+                      <Upload className="w-5 h-5 text-gray-400" />
+                      <span className="text-gray-600 font-medium">Upload new document</span>
+                    </div>
+                  </Link>
+                )}
               </div>
             </div>
 
