@@ -176,6 +176,9 @@ app.get('/api', (req: Request, res: Response) => {
   });
 });
 
+// Monta los routers de dominio (documentos, chat, quizzes, etc.) bajo /api.
+app.use('/api', apiRouter);
+
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof AuthError) {

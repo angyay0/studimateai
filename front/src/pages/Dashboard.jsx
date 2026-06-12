@@ -133,27 +133,43 @@ function Dashboard({ onLogout }) {
               </div>
 
               <div className="space-y-4">
-                {documents.map((doc) => (
-                  <div key={doc.id} className="card hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary-50 rounded-lg flex items-center justify-center text-2xl">
-                          {doc.icon}
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{doc.title}</h3>
-                          <p className="text-sm text-gray-500">
-                            {doc.pages} pages · {doc.quizzes} quizzes · {doc.uploadedAt}
-                          </p>
-                        </div>
+                {documents.length === 0 ? (
+                  <div className="card border-2 border-dashed border-gray-200 bg-gray-50/50">
+                    <div className="flex flex-col items-center text-center py-8">
+                      <div className="w-14 h-14 bg-primary-50 rounded-2xl flex items-center justify-center mb-4">
+                        <FileText className="w-7 h-7 text-primary-400" />
                       </div>
-                      <button className="btn-primary">
-                        <Target className="w-4 h-4" />
-                        Quiz me
-                      </button>
+                      <h3 className="font-semibold text-gray-900 mb-1">Aún no hay documentos recientes</h3>
+                      <p className="text-sm text-gray-500 max-w-xs">
+                        Sube tu primer PDF para empezar a generar quizzes y repasar.
+                      </p>
                     </div>
                   </div>
-                ))}
+                ) : (
+                  documents.map((doc) => (
+                    <div key={doc.id} className="card hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="w-12 h-12 bg-primary-50 rounded-lg flex items-center justify-center shrink-0">
+                            <FileText className="w-6 h-6 text-primary-500" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-gray-900 truncate">{doc.originalName ?? doc.title}</h3>
+                            <p className="text-sm text-gray-500 truncate">
+                              {doc.pageCount ? `${doc.pageCount} páginas · ` : ''}
+                              {doc.status ?? 'listo'}
+                              {doc.createdAt ? ` · ${new Date(doc.createdAt).toLocaleDateString('es-MX')}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <Link to="/upload" className="btn-primary shrink-0">
+                          <Target className="w-4 h-4" />
+                          Quiz me
+                        </Link>
+                      </div>
+                    </div>
+                  ))
+                )}
 
                 <Link to="/upload" className="card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
                   <div className="flex items-center justify-center gap-3 py-4">
