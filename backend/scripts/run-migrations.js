@@ -1,6 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
 const { Client } = require('pg');
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const migrationsDir = path.resolve(__dirname, '../migrations');
 
@@ -10,15 +14,20 @@ async function main() {
     connectionString?.includes('sslmode=require') ||
     process.env.DB_SSL === 'true';
 
-  const client = new Client({
-    connectionString,
-    host: process.env.DB_HOST || 'localhost',
+  const clientConfig = {
+    host: process.env.DB_HOST || undefined,
     port: Number(process.env.DB_PORT || 5432),
     database: process.env.DB_NAME || 'studymate_ai',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
     ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-  });
+  };
+
+  if (!process.env.DB_HOST && !process.env.DB_NAME && !process.env.DB_USER && !process.env.DB_PASSWORD && connectionString) {
+    clientConfig.connectionString = connectionString;
+  }
+
+  const client = new Client(clientConfig);
 
   await client.connect();
 
