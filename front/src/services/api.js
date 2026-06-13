@@ -232,6 +232,7 @@ export const authAPI = {
 export const documentsAPI = {
   getAll: async () => {
     const response = await fetch(`${API_URL}/api/documents`, {
+      method: 'GET',
       headers: { ...authAPI.getAuthHeader() }
     })
     if (!response.ok) {
