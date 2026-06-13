@@ -7,7 +7,7 @@
 import { Router } from 'express';
 import multer, { FileFilterCallback } from 'multer';
 import { Request } from 'express';
-import { param } from 'express-validator';
+import { param, body } from 'express-validator';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -81,7 +81,40 @@ router.post(
 );
 
 /**
- * DELETE /api/documents/:id — Eliminar un documento.
+ * GET /api/documents/:id — Obtener un documento por ID (verifica propiedad).
+ */
+router.get(
+  '/:id',
+  authMiddleware,
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID válido'),
+  validate,
+  asyncHandler(async (req, res) => {
+    const doc = await DocumentService.getDocument(req.user!.id, req.params.id);
+    res.json({ success: true, document: doc });
+  })
+);
+
+/**
+ * PATCH /api/documents/:id — Renombrar un documento (verifica propiedad).
+ * Body: { name: string }
+ */
+router.patch(
+  '/:id',
+  authMiddleware,
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID válido'),
+  body('name')
+    .isString().withMessage('El nombre debe ser texto')
+    .trim()
+    .isLength({ min: 1, max: 255 }).withMessage('El nombre debe tener entre 1 y 255 caracteres'),
+  validate,
+  asyncHandler(async (req, res) => {
+    const doc = await DocumentService.renameDocument(req.user!.id, req.params.id, req.body.name);
+    res.json({ success: true, document: doc });
+  })
+);
+
+/**
+ * DELETE /api/documents/:id — Eliminar un documento (verifica propiedad).
  */
 router.delete(
   '/:id',

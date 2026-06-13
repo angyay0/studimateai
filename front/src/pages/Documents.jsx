@@ -169,6 +169,11 @@ export default function Documents({ onLogout }) {
     }
   }
 
+  const handleRename = (updatedDoc) => {
+    setDocuments(prev => prev.map(d => d.id === updatedDoc.id ? updatedDoc : d))
+    setPreviewDoc(updatedDoc)
+  }
+
   const filtered = documents.filter(doc =>
     doc.title.toLowerCase().includes(search.toLowerCase()) ||
     doc.originalFilename?.toLowerCase().includes(search.toLowerCase())
@@ -278,7 +283,12 @@ export default function Documents({ onLogout }) {
 
       {/* Modal de vista previa */}
       {previewDoc && (
-        <DocumentPreview doc={previewDoc} onClose={() => setPreviewDoc(null)} onDelete={handleDelete} />
+        <DocumentPreview
+          doc={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+          onDelete={handleDelete}
+          onRename={handleRename}
+        />
       )}
     </div>
   )

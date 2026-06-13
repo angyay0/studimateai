@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   X, FileText, CheckCircle, AlertCircle, Clock,
-  Loader2, Trash2, Target, Calendar, HardDrive
+  Loader2, Trash2, Target, Calendar, HardDrive, Pencil, Check
 } from 'lucide-react'
+import { documentsAPI } from '../services/api'
 
 /** Formatea bytes a una unidad legible (KB, MB) */
 function formatSize(bytes) {
@@ -34,13 +35,39 @@ function StatusBadge({ status }) {
   )
 }
 
-export default function DocumentPreview({ doc, onClose, onDelete }) {
+export default function DocumentPreview({ doc, onClose, onDelete, onRename }) {
+  const [renaming, setRenaming] = useState(false)
+  const [newName, setNewName] = useState(doc.originalFilename)
+  const [renameError, setRenameError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
   // Cerrar con Escape
   useEffect(() => {
-    const handleKey = (e) => { if (e.key === 'Escape') onClose() }
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        if (renaming) { setRenaming(false); setNewName(doc.originalFilename) }
+        else onClose()
+      }
+    }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
+  }, [onClose, renaming, doc.originalFilename])
+
+  const handleRename = async () => {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === doc.originalFilename) { setRenaming(false); return }
+    setSaving(true)
+    setRenameError(null)
+    try {
+      const updated = await documentsAPI.rename(doc.id, trimmed)
+      onRename?.(updated)
+      setRenaming(false)
+    } catch (err) {
+      setRenameError(err.message || 'Error al renombrar')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handleDelete = () => {
     if (window.confirm(`¿Eliminar "${doc.title}"?`)) {
@@ -62,7 +89,37 @@ export default function DocumentPreview({ doc, onClose, onDelete }) {
       >
         {/* Cabecera */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="font-bold text-gray-900 text-lg truncate pr-4">{doc.title}</h2>
+          {renaming ? (
+            <div className="flex items-center gap-2 flex-1 pr-4">
+              <input
+                autoFocus
+                className="input-field py-1 text-sm flex-1"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleRename() }}
+                maxLength={255}
+              />
+              <button
+                onClick={handleRename}
+                disabled={saving}
+                className="text-primary-600 hover:text-primary-800 transition-colors shrink-0"
+                title="Guardar"
+              >
+                <Check className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-1 pr-4 min-w-0">
+              <h2 className="font-bold text-gray-900 text-lg truncate">{doc.title}</h2>
+              <button
+                onClick={() => setRenaming(true)}
+                className="text-gray-400 hover:text-primary-600 transition-colors shrink-0"
+                title="Renombrar"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors shrink-0"
@@ -81,6 +138,13 @@ export default function DocumentPreview({ doc, onClose, onDelete }) {
 
         {/* Metadata */}
         <div className="px-6 py-5 space-y-4">
+          {renameError && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <p className="text-xs text-red-600">{renameError}</p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500">Estado</span>
             <StatusBadge status={doc.status} />

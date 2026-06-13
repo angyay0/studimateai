@@ -209,6 +209,58 @@ export class DocumentService {
     }
   }
 
+  static async getDocument(userId: string, documentId: string): Promise<Document> {
+    const result = await query<Document>(
+      `SELECT id, user_id as "userId", course_id as "courseId",
+              original_filename as "originalFilename", mime_type as "mimeType",
+              size_bytes as "sizeBytes", sha256_hash as "sha256Hash",
+              storage_key as "storageKey", openai_file_id as "openaiFileId",
+              openai_vector_store_id as "openaiVectorStoreId",
+              openai_vector_store_file_id as "openaiVectorStoreFileId",
+              status, error_message as "errorMessage",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM documents
+       WHERE id = $1 AND user_id = $2 AND status != 'deleted'`,
+      [documentId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      throw ApiError.notFound('Documento no encontrado o no tienes permiso para verlo.');
+    }
+
+    return result.rows[0];
+  }
+
+  static async renameDocument(userId: string, documentId: string, newName: string): Promise<Document> {
+    // Verifica propiedad antes de renombrar
+    const check = await query<Document>(
+      `SELECT id FROM documents WHERE id = $1 AND user_id = $2 AND status != 'deleted'`,
+      [documentId, userId]
+    );
+
+    if (check.rows.length === 0) {
+      throw ApiError.notFound('Documento no encontrado o no tienes permiso para modificarlo.');
+    }
+
+    const result = await query<Document>(
+      `UPDATE documents
+         SET original_filename = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, user_id as "userId", course_id as "courseId",
+                 original_filename as "originalFilename", mime_type as "mimeType",
+                 size_bytes as "sizeBytes", sha256_hash as "sha256Hash",
+                 storage_key as "storageKey", openai_file_id as "openaiFileId",
+                 openai_vector_store_id as "openaiVectorStoreId",
+                 openai_vector_store_file_id as "openaiVectorStoreFileId",
+                 status, error_message as "errorMessage",
+                 created_at as "createdAt", updated_at as "updatedAt"`,
+      [newName, documentId]
+    );
+
+    logger.info(`Documento ${documentId} renombrado a "${newName}" por usuario ${userId}`);
+    return result.rows[0];
+  }
+
   static async deleteDocument(userId: string, documentId: string): Promise<void> {
     try {
       const result = await query<Document>(
