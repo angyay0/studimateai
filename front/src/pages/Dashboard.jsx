@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, Target, Clock, Star, Upload, ChevronRight, Flame } from 'lucide-react'
+import { BookOpen, Target, Clock, Star, Upload, ChevronRight, Flame, FileText } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { statsAPI, documentsAPI, quizzesAPI, authAPI } from '../services/api'
 
@@ -16,17 +16,30 @@ function Dashboard({ onLogout }) {
   }, [])
 
   const loadDashboardData = async () => {
+    const currentUser = authAPI.getCurrentUser()
+    setUser(currentUser)
+
     try {
       const [statsData, docsData, quizzesData] = await Promise.all([
         statsAPI.getDashboard(),
         documentsAPI.getAll(),
         quizzesAPI.getUpcoming()
       ])
-      
-      setStats(statsData)
-      setDocuments(docsData.slice(0, 3))
-      setUpcomingQuizzes(quizzesData)
-      setUser(authAPI.getCurrentUser())
+
+      if (statsData) {
+        setStats(statsData)
+      }
+
+      if (docsData) {
+        setDocuments(docsData.slice(0, 3))
+
+      } else {
+        setDocuments([])
+      }
+
+      if (quizzesData) {
+        setUpcomingQuizzes(quizzesData)
+      }
     } catch (error) {
       console.error('Error loading dashboard:', error)
     } finally {
@@ -66,7 +79,7 @@ function Dashboard({ onLogout }) {
               <div>
                 <p className="text-gray-600">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                 <h1 className="text-3xl font-bold text-gray-900">
-                  {getGreeting()}, {user?.name || 'Maria'}! 👋
+                  {getGreeting()}, {user?.name || user?.firstName || 'friend'}! 👋
                 </h1>
               </div>
               <div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-full border border-orange-200">
@@ -133,34 +146,52 @@ function Dashboard({ onLogout }) {
               </div>
 
               <div className="space-y-4">
-                {documents.map((doc) => (
-                  <div key={doc.id} className="card hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary-50 rounded-lg flex items-center justify-center text-2xl">
-                          {doc.icon}
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{doc.title}</h3>
-                          <p className="text-sm text-gray-500">
-                            {doc.pages} pages · {doc.quizzes} quizzes · {doc.uploadedAt}
-                          </p>
-                        </div>
-                      </div>
-                      <button className="btn-primary">
-                        <Target className="w-4 h-4" />
-                        Quiz me
-                      </button>
+                {documents.length == 0 && (
+                  <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm font-semibold text-gray-700">No hay documentos reales aun</p>
                     </div>
+                    <Link to="/upload" className="w-full flex items-center justify-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-primary-700 font-medium hover:bg-primary-100 transition-colors">
+                      <Upload className="w-4 h-4" />
+                      Upload new document
+                    </Link>
                   </div>
-                ))}
+                )}
 
-                <Link to="/upload" className="card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
-                  <div className="flex items-center justify-center gap-3 py-4">
-                    <Upload className="w-5 h-5 text-gray-400" />
-                    <span className="text-gray-600 font-medium">Upload new document</span>
-                  </div>
-                </Link>
+                {documents.length > 0 && documents.map((doc) => (
+                    <div key={doc.id} className="card hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="w-12 h-12 bg-primary-50 rounded-lg flex items-center justify-center shrink-0">
+                            <FileText className="w-6 h-6 text-primary-500" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-gray-900 truncate">{doc.title}</h3>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              {doc.status === 'indexed' ? 'Listo' :
+                               doc.status === 'processing' || doc.status === 'indexing' ? 'Procesando...' :
+                               doc.status === 'error' || doc.status === 'failed' ? 'Error al procesar' :
+                               doc.status}
+                            </p>
+                          </div>
+                        </div>
+                        <Link to="/quiz-mode" className="btn-primary shrink-0">
+                          <Target className="w-4 h-4" />
+                          Quiz me
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                  {documents.length > 0 && (
+                <div className="mt-6">
+                  <Link to="/upload" className="block card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
+                    <div className="flex items-center justify-center gap-3 py-1">
+                      <Upload className="w-5 h-5 text-gray-400" />
+                      <span className="text-gray-600 font-medium">Upload new document</span>
+                    </div>
+                  </Link>
+                </div>
+              )}
               </div>
             </div>
 

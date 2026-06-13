@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Upload, FileText, Trash2, Sparkles, HelpCircle } from 'lucide-react'
+import { Upload, FileText, Trash2, Sparkles, HelpCircle, AlertCircle, CheckCircle } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { documentsAPI, quizzesAPI } from '../services/api'
 
@@ -7,6 +7,9 @@ function UploadGenerate({ onLogout }) {
   const [documents, setDocuments] = useState([])
   const [selectedDoc, setSelectedDoc] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadError, setUploadError] = useState(null)
+  const [uploadSuccess, setUploadSuccess] = useState(null)
   const [generating, setGenerating] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [quizConfig, setQuizConfig] = useState({
@@ -46,7 +49,6 @@ function UploadGenerate({ onLogout }) {
     e.preventDefault()
     e.stopPropagation()
     setDragActive(false)
-    
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       await handleFileUpload(e.dataTransfer.files[0])
     }
@@ -59,37 +61,64 @@ function UploadGenerate({ onLogout }) {
   }
 
   const handleFileUpload = async (file) => {
-    if (!file.name.endsWith('.pdf') && !file.name.endsWith('.docx') && !file.name.endsWith('.txt')) {
-      alert('Please upload a PDF, DOCX, or TXT file')
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadError('Solo se aceptan archivos PDF.')
+      return
+    }
+    const MAX_SIZE = 20 * 1024 * 1024 // 20 MB
+    if (file.size > MAX_SIZE) {
+      setUploadError('El archivo supera el tamaño máximo de 20 MB.')
       return
     }
 
     setUploading(true)
+    setUploadProgress(0)
+    setUploadError(null)
+    setUploadSuccess(null)
+
     try {
-      const newDoc = await documentsAPI.upload(file, {})
-      setDocuments([newDoc, ...documents])
+      const newDoc = await documentsAPI.upload(file, (percent) => {
+        setUploadProgress(percent)
+      })
+      setDocuments((prev) => [newDoc, ...prev])
       setSelectedDoc(newDoc)
+      setUploadSuccess(`"${newDoc.originalName ?? file.name}" subido correctamente.`)
+      setUploadProgress(100)
     } catch (error) {
       console.error('Error uploading file:', error)
-      alert('Failed to upload file')
+      setUploadError(error.message || 'Error al subir el archivo. Intenta de nuevo.')
     } finally {
       setUploading(false)
     }
   }
 
+  const handleDeleteDocument = async (e, docId) => {
+    e.stopPropagation()
+    try {
+      await documentsAPI.delete(docId)
+      const remaining = documents.filter(d => d.id !== docId)
+      setDocuments(remaining)
+      if (selectedDoc?.id === docId) {
+        setSelectedDoc(remaining[0] ?? null)
+      }
+    } catch (error) {
+      setUploadError(error.message || 'Error al eliminar el documento.')
+    }
+  }
+
   const handleGenerateQuiz = async () => {
     if (!selectedDoc) {
-      alert('Please select a document first')
+      setUploadError('Selecciona un documento primero.')
       return
     }
 
     setGenerating(true)
     try {
       const quiz = await quizzesAPI.generate(selectedDoc.id, quizConfig)
-      alert(`Quiz generated successfully with ${quiz.questions.length} questions!`)
+      alert(`¡Quiz generado con ${quiz.questions.length} preguntas!`)
     } catch (error) {
       console.error('Error generating quiz:', error)
-      alert('Failed to generate quiz')
+      setUploadError(error.message || 'Error al generar el quiz.')
     } finally {
       setGenerating(false)
     }
@@ -120,10 +149,28 @@ function UploadGenerate({ onLogout }) {
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-2">
               <Upload className="w-6 h-6 text-primary-600" />
-              <h1 className="text-3xl font-bold text-gray-900">Upload & Generate</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Upload &amp; Generate</h1>
             </div>
-            <p className="text-gray-600">Upload a PDF to generate a personalized quiz</p>
+            <p className="text-gray-600">Sube un PDF para generar un quiz personalizado</p>
           </div>
+
+          {/* Notificación de error */}
+          {uploadError && (
+            <div className="mb-6 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+              <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+              <span className="text-sm">{uploadError}</span>
+              <button className="ml-auto text-red-400 hover:text-red-600" onClick={() => setUploadError(null)}>✕</button>
+            </div>
+          )}
+
+          {/* Notificación de éxito */}
+          {uploadSuccess && (
+            <div className="mb-6 flex items-start gap-3 bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-3">
+              <CheckCircle className="w-5 h-5 mt-0.5 shrink-0" />
+              <span className="text-sm">{uploadSuccess}</span>
+              <button className="ml-auto text-green-400 hover:text-green-600" onClick={() => setUploadSuccess(null)}>✕</button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
@@ -142,24 +189,46 @@ function UploadGenerate({ onLogout }) {
                   <Upload className="w-8 h-8 text-primary-600" />
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-2">
-                  {uploading ? 'Uploading...' : 'Drag & drop your PDF here'}
+                  {uploading ? 'Subiendo...' : 'Arrastra tu PDF aquí'}
                 </h3>
-                <p className="text-sm text-gray-500 mb-4">or click to browse files</p>
-                <label className="btn-primary cursor-pointer inline-flex">
+                <p className="text-sm text-gray-500 mb-4">o haz clic para elegir un archivo</p>
+
+                {/* Barra de progreso (solo visible al subir) */}
+                {uploading && (
+                  <div className="mb-4">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>Subiendo archivo...</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-primary-600 h-2 rounded-full transition-all duration-200"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <label className={`btn-primary cursor-pointer inline-flex ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
                   <input
                     type="file"
                     className="hidden"
-                    accept=".pdf,.docx,.txt"
+                    accept=".pdf"
                     onChange={handleFileInput}
                     disabled={uploading}
                   />
-                  Choose File
+                  Elegir archivo
                 </label>
-                <p className="text-xs text-gray-400 mt-4">PDF, DOCX, TXT · Max 50 MB</p>
+                <p className="text-xs text-gray-400 mt-4">Solo PDF · Máx 20 MB</p>
               </div>
 
               <div className="mt-6">
-                <h3 className="font-semibold text-gray-900 mb-4">YOUR DOCUMENTS</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">TUS DOCUMENTOS</h3>
+                {documents.length == 0 && (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                    <p className="text-sm text-gray-400 text-center py-2">Aun no has subido ningun documento.</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   {documents.map((doc) => (
                     <div
@@ -173,21 +242,19 @@ function UploadGenerate({ onLogout }) {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="text-2xl">{doc.icon}</div>
+                          <FileText className="w-6 h-6 text-primary-400 shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{doc.title}</p>
-                            <p className="text-xs text-gray-500">{doc.pages} pages · {doc.uploadedAt}</p>
+                            <p className="font-medium text-gray-900 truncate">{doc.originalName ?? doc.title}</p>
+                            <p className="text-xs text-gray-500">
+                              {doc.pageCount ? `${doc.pageCount} páginas · ` : ''}
+                              {doc.status}
+                            </p>
                           </div>
                         </div>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDocuments(documents.filter(d => d.id !== doc.id))
-                            if (selectedDoc?.id === doc.id) {
-                              setSelectedDoc(documents[0])
-                            }
-                          }}
-                          className="text-gray-400 hover:text-red-600 transition-colors"
+                          onClick={(e) => handleDeleteDocument(e, doc.id)}
+                          className="text-gray-400 hover:text-red-600 transition-colors ml-2"
+                          title="Eliminar documento"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -203,25 +270,25 @@ function UploadGenerate({ onLogout }) {
                 <div className="bg-white rounded-2xl border border-gray-200 p-8">
                   <div className="flex items-center justify-between mb-6">
                     <div>
-                      <h2 className="text-2xl font-bold text-gray-900 mb-1">{selectedDoc.title}</h2>
-                      <p className="text-gray-600">{selectedDoc.pages} pages · Configure your quiz below</p>
+                      <h2 className="text-2xl font-bold text-gray-900 mb-1">{selectedDoc.originalName ?? selectedDoc.title}</h2>
+                      <p className="text-gray-600">{selectedDoc.pageCount ? `${selectedDoc.pageCount} páginas · ` : ''}Configura tu quiz</p>
                     </div>
                     <button className="btn-primary" onClick={handleGenerateQuiz} disabled={generating}>
                       <Sparkles className="w-5 h-5" />
-                      {generating ? 'Generating...' : 'Ready to generate'}
+                      {generating ? 'Generando...' : 'Generar Quiz'}
                     </button>
                   </div>
 
                   <div className="bg-purple-50 rounded-xl p-6 mb-8">
                     <div className="flex items-center gap-2 mb-4">
                       <Sparkles className="w-5 h-5 text-primary-600" />
-                      <h3 className="font-semibold text-gray-900">Quiz Configuration</h3>
+                      <h3 className="font-semibold text-gray-900">Configuración del Quiz</h3>
                     </div>
 
                     <div className="space-y-6">
                       <div>
                         <div className="flex items-center justify-between mb-3">
-                          <label className="font-medium text-gray-900">Number of Questions</label>
+                          <label className="font-medium text-gray-900">Número de Preguntas</label>
                           <span className="text-primary-600 font-bold">{quizConfig.questionCount}</span>
                         </div>
                         <input
@@ -233,13 +300,13 @@ function UploadGenerate({ onLogout }) {
                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
                         />
                         <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>5 (quick review)</span>
-                          <span>50 (full exam)</span>
+                          <span>5 (repaso rápido)</span>
+                          <span>50 (examen completo)</span>
                         </div>
                       </div>
 
                       <div>
-                        <label className="font-medium text-gray-900 mb-3 block">Difficulty Level</label>
+                        <label className="font-medium text-gray-900 mb-3 block">Nivel de Dificultad</label>
                         <div className="grid grid-cols-4 gap-3">
                           {['Easy', 'Medium', 'Hard', 'Mixed'].map((level) => (
                             <button
@@ -258,7 +325,7 @@ function UploadGenerate({ onLogout }) {
                       </div>
 
                       <div>
-                        <label className="font-medium text-gray-900 mb-3 block">Question Types</label>
+                        <label className="font-medium text-gray-900 mb-3 block">Tipos de Preguntas</label>
                         <div className="grid grid-cols-2 gap-3">
                           {['Multiple Choice', 'True / False', 'Fill in the blank', 'Open-ended'].map((type) => (
                             <button

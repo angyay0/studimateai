@@ -16,14 +16,33 @@ let pool: Pool | null = null;
  */
 export function getPool(): Pool {
   if (!pool) {
-    pool = new Pool({
-      connectionString: databaseConfig.connectionString,
-      // En producción muchos proveedores gestionados requieren SSL.
-      ssl: env.isProduction ? { rejectUnauthorized: false } : undefined,
+    const connStr = databaseConfig.connectionString ?? '';
+    const requireSsl =
+      env.isProduction || connStr.includes('sslmode=require');
+
+    const poolConfig: any = {
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
-    });
+      ssl: requireSsl ? { rejectUnauthorized: false } : undefined,
+    };
+
+    if (
+      databaseConfig.host &&
+      databaseConfig.user &&
+      databaseConfig.password &&
+      databaseConfig.database
+    ) {
+      poolConfig.host = databaseConfig.host;
+      poolConfig.port = databaseConfig.port;
+      poolConfig.database = databaseConfig.database;
+      poolConfig.user = databaseConfig.user;
+      poolConfig.password = databaseConfig.password;
+    } else if (connStr) {
+      poolConfig.connectionString = connStr;
+    }
+
+    pool = new Pool(poolConfig);
   }
   return pool;
 }
