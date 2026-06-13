@@ -146,11 +146,10 @@ function Dashboard({ onLogout }) {
               </div>
 
               <div className="space-y-4">
-                {documents.length === 0 && (
+                {documents.length == 0 && (
                   <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white p-5">
                     <div className="flex items-center justify-between mb-4">
                       <p className="text-sm font-semibold text-gray-700">No hay documentos reales aun</p>
-                      <span className="text-xs text-gray-400">Mostrando ejemplos</span>
                     </div>
                     <Link to="/upload" className="w-full flex items-center justify-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-primary-700 font-medium hover:bg-primary-100 transition-colors">
                       <Upload className="w-4 h-4" />
@@ -159,7 +158,7 @@ function Dashboard({ onLogout }) {
                   </div>
                 )}
 
-                {(documents.length > 0 ? documents : mockDocuments).map((doc) => (
+                {documents.length > 0 && documents.map((doc) => (
                     <div key={doc.id} className="card hover:shadow-md transition-shadow">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 min-w-0">
@@ -167,15 +166,11 @@ function Dashboard({ onLogout }) {
                             <FileText className="w-6 h-6 text-primary-500" />
                           </div>
                           <div className="min-w-0">
-                            <h3 className="font-semibold text-gray-900 truncate">{doc.originalName ?? doc.title}</h3>
-                            <p className="text-sm text-gray-500 truncate">
-                              {doc.pageCount ? `${doc.pageCount} páginas · ` : ''}
-                              {doc.status ?? 'listo'}
-                              {doc.createdAt ? ` · ${new Date(doc.createdAt).toLocaleDateString('es-MX')}` : ''}
-                            </p>
+                            <h3 className="font-semibold text-gray-900 truncate">{doc.title}</h3>
+                            <p className="text-sm text-gray-600">{doc.pages} pages • {doc.quizzes} quizzes</p>
                           </div>
                         </div>
-                        <Link to="/upload" className="btn-primary shrink-0">
+                        <Link to="/quiz-mode" className="btn-primary shrink-0">
                           <Target className="w-4 h-4" />
                           Quiz me
                         </Link>
