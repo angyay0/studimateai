@@ -261,40 +261,61 @@ export const documentsAPI = {
     }))
   },
   
-  upload: async (file, config = {}) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    if (config.courseId) {
-      formData.append('courseId', config.courseId)
-    }
+  upload: (file, onProgress = () => {}, config = {}) => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (config.courseId) {
+        formData.append('courseId', config.courseId)
+      }
 
-    const response = await fetch(`${API_URL}/api/documents/upload`, {
-      method: 'POST',
-      headers: {
-        ...authAPI.getAuthHeader()
-      },
-      body: formData
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100)
+          onProgress(percent)
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            const doc = data.document
+            resolve({
+              id: doc.id,
+              title: doc.originalFilename.replace(/\.(pdf|txt|md|docx)$/i, ''),
+              originalFilename: doc.originalFilename,
+              mimeType: doc.mimeType,
+              sizeBytes: doc.sizeBytes,
+              status: doc.status,
+              errorMessage: doc.errorMessage,
+              uploadedAt: 'Just now',
+              icon: doc.mimeType === 'application/pdf' ? '📄' : '📝',
+              pages: null
+            })
+          } catch {
+            reject(new Error('Respuesta inválida del servidor'))
+          }
+        } else {
+          let message = 'Failed to upload document'
+          try {
+            const body = JSON.parse(xhr.responseText)
+            message = body.error || body.message || message
+          } catch { /* ignore */ }
+          reject(new Error(message))
+        }
+      })
+
+      xhr.addEventListener('error', () => reject(new Error('Error de red al subir el archivo')))
+      xhr.addEventListener('abort', () => reject(new Error('Subida cancelada')))
+
+      const token = getAuthToken()
+      xhr.open('POST', `${API_URL}/api/documents/upload`)
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.send(formData)
     })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to upload document')
-    }
-
-    const doc = data.document
-    return {
-      id: doc.id,
-      title: doc.originalFilename.replace(/\.(pdf|txt|md|docx)$/i, ''),
-      originalFilename: doc.originalFilename,
-      mimeType: doc.mimeType,
-      sizeBytes: doc.sizeBytes,
-      status: doc.status,
-      errorMessage: doc.errorMessage,
-      uploadedAt: 'Just now',
-      icon: doc.mimeType === 'application/pdf' ? '📄' : '📝',
-      pages: null
-    }
   },
   
   delete: async (documentId) => {
