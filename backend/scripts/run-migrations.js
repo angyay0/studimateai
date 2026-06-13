@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
-// Carga el archivo .env igual que el backend (raíz del monorepo o backend/).
+// Carga el .env (raíz del monorepo, backend/, o un nivel más arriba)
 const candidateEnvPaths = [
   path.resolve(process.cwd(), '.env'),
   path.resolve(__dirname, '../.env'),
@@ -11,6 +11,7 @@ const candidateEnvPaths = [
 for (const candidate of candidateEnvPaths) {
   if (fs.existsSync(candidate)) {
     require('dotenv').config({ path: candidate });
+    console.log(`Cargando .env desde: ${candidate}`);
     break;
   }
 }
@@ -19,20 +20,26 @@ const migrationsDir = path.resolve(__dirname, '../migrations');
 
 async function main() {
   if (!process.env.DATABASE_URL) {
-    throw new Error(
-      'DATABASE_URL no está definida. Verifica que el archivo .env exista y contenga la cadena de conexión.'
-    );
+    throw new Error('DATABASE_URL no está definida. Verifica que exista un archivo .env con la cadena de conexión.');
   }
 
-  // Si la conexión requiere SSL (DigitalOcean), habilítalo.
+  console.log('Conectando a base de datos...');
   const needsSsl = /sslmode=require/i.test(process.env.DATABASE_URL);
+  console.log(`SSL: ${needsSsl}`);
+
+  // Quita sslmode de la URL para que pg no lo interprete (conflicto con rejectUnauthorized).
+  // El SSL se maneja por la opción `ssl` del cliente.
+  const cleanUrl = process.env.DATABASE_URL
+    .replace(/[?&]sslmode=[^&]*/i, '')
+    .replace(/[?&]uselibpqcompat=[^&]*/i, '');
 
   const client = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: cleanUrl,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
 
   await client.connect();
+  console.log('Conexión exitosa!');
 
   const files = fs
     .readdirSync(migrationsDir)
@@ -46,11 +53,13 @@ async function main() {
   }
 
   await client.end();
+  console.log('Migraciones completadas!');
 }
 
 main().catch((error) => {
-  console.error('Migration failed:', error.message);
-  if (error.detail) console.error('Detail:', error.detail);
+  console.error('Migration failed:', error.message || JSON.stringify(error));
   if (error.code) console.error('Code:', error.code);
+  if (error.detail) console.error('Detail:', error.detail);
+  if (error.cause) console.error('Cause:', error.cause);
   process.exit(1);
 });
