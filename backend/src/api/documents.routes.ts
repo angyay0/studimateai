@@ -13,6 +13,7 @@ import { validate } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
 import { uploadConfig } from '../config';
+import { DocumentService } from '../services/DocumentService';
 
 const router = Router();
 
@@ -22,7 +23,13 @@ const router = Router();
  * mientras la lógica de almacenamiento real (disco/S3) no esté implementada.
  */
 function fileFilter(_req: Request, file: Express.Multer.File, cb: FileFilterCallback): void {
-  const isAllowedMime = file.mimetype === 'application/pdf';
+  const allowedMimes = [
+    'application/pdf',
+    'text/plain',
+    'text/markdown',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ];
+  const isAllowedMime = allowedMimes.includes(file.mimetype);
   const isAllowedExt = uploadConfig.allowedFileTypes.some((ext) =>
     file.originalname.toLowerCase().endsWith(`.${ext.toLowerCase()}`)
   );
@@ -46,10 +53,13 @@ const upload = multer({
 router.get(
   '/',
   authMiddleware,
-  asyncHandler(async () => {
-    // TODO (HU-05): const docs = await DocumentService.getUserDocuments(req.user.id);
-    //               res.json(docs);
-    throw ApiError.notImplemented('Listado de documentos pendiente (HU-05).');
+  asyncHandler(async (req, res) => {
+    const { courseId } = req.query;
+    const docs = await DocumentService.getUserDocuments(
+      req.user!.id,
+      courseId as string | undefined
+    );
+    res.json({ success: true, documents: docs });
   })
 );
 
@@ -60,13 +70,13 @@ router.post(
   '/upload',
   authMiddleware,
   upload.single('file'),
-  asyncHandler(async (req) => {
+  asyncHandler(async (req, res) => {
     if (!req.file) {
       throw ApiError.badRequest('No se recibió ningún archivo en el campo "file".');
     }
-    // TODO (HU-04): const doc = await DocumentService.uploadDocument(req.user.id, req.file);
-    //               res.status(201).json(doc);
-    throw ApiError.notImplemented('Subida de documentos pendiente (HU-04).');
+    const { courseId } = req.body;
+    const doc = await DocumentService.uploadDocument(req.user!.id, req.file, courseId);
+    res.status(201).json({ success: true, document: doc });
   })
 );
 
@@ -78,10 +88,9 @@ router.delete(
   authMiddleware,
   param('id').isUUID().withMessage('El id del documento debe ser un UUID válido'),
   validate,
-  asyncHandler(async () => {
-    // TODO: await DocumentService.deleteDocument(req.user.id, req.params.id);
-    //       res.status(204).send();
-    throw ApiError.notImplemented('Eliminación de documentos pendiente.');
+  asyncHandler(async (req, res) => {
+    await DocumentService.deleteDocument(req.user!.id, req.params.id);
+    res.status(204).send();
   })
 );
 

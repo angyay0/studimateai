@@ -150,6 +150,10 @@ app.post('/api/auth/logout', authMiddleware, async (req: Request, res: Response,
   }
 });
 
+// Montar rutas de la API (documentos, RAG, exams, etc.)
+// Se monta después de las rutas de auth para que las implementadas tomen precedencia
+app.use('/api', apiRouter);
+
 // API Routes (to be implemented)
 app.get('/api', (req: Request, res: Response) => {
   res.json({ 
