@@ -318,6 +318,37 @@ export const documentsAPI = {
     })
   },
   
+  rename: async (documentId, newName) => {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authAPI.getAuthHeader()
+      },
+      body: JSON.stringify({ name: newName })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to rename document')
+    }
+
+    const doc = data.document
+    return {
+      id: doc.id,
+      title: doc.originalFilename.replace(/\.(pdf|txt|md|docx)$/i, ''),
+      originalFilename: doc.originalFilename,
+      mimeType: doc.mimeType,
+      sizeBytes: doc.sizeBytes,
+      status: doc.status,
+      errorMessage: doc.errorMessage,
+      uploadedAt: new Date(doc.createdAt).toLocaleString(),
+      icon: doc.mimeType === 'application/pdf' ? '📄' : '📝',
+      pages: null
+    }
+  },
+
   delete: async (documentId) => {
     const response = await fetch(`${API_URL}/api/documents/${documentId}`, {
       method: 'DELETE',

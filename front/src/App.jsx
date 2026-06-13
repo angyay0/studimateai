@@ -4,6 +4,7 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import Dashboard from './pages/Dashboard'
 import UploadGenerate from './pages/UploadGenerate'
+import Documents from './pages/Documents'
 import QuizMode from './pages/QuizMode'
 import Progress from './pages/Progress'
 import { authAPI } from './services/api'
@@ -95,6 +96,12 @@ function App() {
           path="/upload" 
           element={
             isAuthenticated ? <UploadGenerate onLogout={handleLogout} /> : <Navigate to="/login" />
+          } 
+        />
+        <Route 
+          path="/documents" 
+          element={
+            isAuthenticated ? <Documents onLogout={handleLogout} /> : <Navigate to="/login" />
           } 
         />
         <Route 
