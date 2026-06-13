@@ -182,15 +182,16 @@ function Dashboard({ onLogout }) {
                       </div>
                     </div>
                   ))}
-
-                {documents.length > 0 && (
-                  <Link to="/upload" className="mt-2 card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
-                    <div className="flex items-center justify-center gap-3 py-4">
+                  {documents.length > 0 && (
+                <div className="mt-6">
+                  <Link to="/upload" className="block card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
+                    <div className="flex items-center justify-center gap-3 py-1">
                       <Upload className="w-5 h-5 text-gray-400" />
                       <span className="text-gray-600 font-medium">Upload new document</span>
                     </div>
                   </Link>
-                )}
+                </div>
+              )}
               </div>
             </div>
 
