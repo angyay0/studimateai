@@ -32,6 +32,10 @@ export class DocumentService {
     courseId?: string | null
   ): Promise<Document> {
     try {
+      // multer/busboy decodifica el nombre como Latin-1; lo convertimos a UTF-8
+      // para que acentos y ñ se guarden correctamente (ej. "certificación" no "certificaciÃ³n")
+      const originalFilename = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
       const sha256Hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
 
       const existingDoc = await this.findExistingDocument(userId, courseId, sha256Hash);
@@ -41,7 +45,7 @@ export class DocumentService {
       }
 
       const documentId = uuidv4();
-      const filename = `${documentId}-${file.originalname}`;
+      const filename = `${documentId}-${originalFilename}`;
 
       const doc = await query<Document>(
         `INSERT INTO documents 
@@ -55,7 +59,7 @@ export class DocumentService {
                    openai_vector_store_file_id as "openaiVectorStoreFileId",
                    status, error_message as "errorMessage",
                    created_at as "createdAt", updated_at as "updatedAt"`,
-        [documentId, userId, courseId || null, file.originalname, file.mimetype, file.size, sha256Hash, 'uploaded']
+        [documentId, userId, courseId || null, originalFilename, file.mimetype, file.size, sha256Hash, 'uploaded']
       );
 
       const document = doc.rows[0];
