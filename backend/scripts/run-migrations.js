@@ -2,16 +2,34 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
+// Carga el archivo .env igual que el backend (raíz del monorepo o backend/).
+const candidateEnvPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../.env'),
+  path.resolve(__dirname, '../../.env'),
+];
+for (const candidate of candidateEnvPaths) {
+  if (fs.existsSync(candidate)) {
+    require('dotenv').config({ path: candidate });
+    break;
+  }
+}
+
 const migrationsDir = path.resolve(__dirname, '../migrations');
 
 async function main() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      'DATABASE_URL no está definida. Verifica que el archivo .env exista y contenga la cadena de conexión.'
+    );
+  }
+
+  // Si la conexión requiere SSL (DigitalOcean), habilítalo.
+  const needsSsl = /sslmode=require/i.test(process.env.DATABASE_URL);
+
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
-    host: process.env.DB_HOST || 'localhost',
-    port: Number(process.env.DB_PORT || 5432),
-    database: process.env.DB_NAME || 'studymate_ai',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
 
   await client.connect();
@@ -32,5 +50,7 @@ async function main() {
 
 main().catch((error) => {
   console.error('Migration failed:', error.message);
+  if (error.detail) console.error('Detail:', error.detail);
+  if (error.code) console.error('Code:', error.code);
   process.exit(1);
 });
