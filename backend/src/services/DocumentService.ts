@@ -29,6 +29,7 @@ export interface DocumentRecord {
   mimeType: string;
   status: 'pending' | 'processing' | 'indexed' | 'error';
   pageCount: number | null;
+  rawText: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +45,7 @@ function rowToDocument(row: Record<string, unknown>): DocumentRecord {
     mimeType: row.mime_type as string,
     status: row.status as DocumentRecord['status'],
     pageCount: row.page_count as number | null,
+    rawText: row.raw_text as string | null,
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
   };
@@ -95,11 +97,18 @@ export class DocumentService {
     fs.writeFileSync(filePath, file.buffer);
     logger.info(`Archivo guardado: ${storedName}`);
 
-    // 2. Extraer número de páginas del PDF (falla suavemente)
+    // 2. Extraer número de páginas y texto plano del PDF (falla suavemente)
     let pageCount: number | null = null;
+    let rawText: string | null = null;
     try {
       const parsed = await pdfParse(file.buffer);
       pageCount = parsed.numpages ?? null;
+      // Limpiar texto: colapsar líneas vacías múltiples y espacios extra
+      rawText = parsed.text
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim() || null;
+      logger.info(`PDF parseado: ${pageCount} páginas, ${rawText?.length ?? 0} caracteres`);
     } catch (err) {
       logger.warn(`No se pudo leer metadatos del PDF "${file.originalname}": ${err}`);
     }
@@ -109,10 +118,10 @@ export class DocumentService {
     const cleanTitle = sanitizeTitle(file.originalname);
     const result = await pool.query<Record<string, unknown>>(
       `INSERT INTO documents
-         (user_id, original_name, stored_name, file_size, mime_type, status, page_count)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+         (user_id, original_name, stored_name, file_size, mime_type, status, page_count, raw_text)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
        RETURNING *`,
-      [userId, cleanTitle, storedName, file.size, file.mimetype, pageCount]
+      [userId, cleanTitle, storedName, file.size, file.mimetype, pageCount, rawText]
     );
 
     const doc = rowToDocument(result.rows[0]);
