@@ -23,6 +23,18 @@ export interface Document {
   updatedAt: Date;
 }
 
+export interface DocumentRow {
+  id: string;
+  user_id: string;
+  file_name: string;
+  file_path: string;
+  file_size: string;
+  mime_type: string;
+  status: 'pending' | 'processing' | 'indexed' | 'error';
+  uploaded_at: Date;
+  updated_at: Date;
+}
+
 // Chat message model placeholder
 export interface ChatMessage {
   id: string;

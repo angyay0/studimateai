@@ -1,171 +1,238 @@
-/**
- * DocumentService — ST-04.3
- *
- * Gestiona la subida, listado y eliminación de documentos PDF.
- * Flujo de upload:
- *   1. Valida tipo/tamaño (ya hecho por multer en la ruta).
- *   2. Persiste el archivo en disco (carpeta uploads/).
- *   3. Extrae el número de páginas del PDF con pdf-parse.
- *   4. Guarda metadatos en la base de datos.
- *   5. Devuelve el registro creado.
- */
-import fs from 'fs';
-import path from 'path';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-// pdf-parse es un módulo CJS sin tipado perfecto; importamos con require para compatibilidad
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buffer: Buffer) => Promise<{ numpages: number; text: string }>;
-import { getPool } from '../config/database';
-import { uploadConfig } from '../config';
-import { ApiError } from '../utils/ApiError';
+import { query } from '../config/database';
 import { logger } from '../utils/logger';
+import { ApiError } from '../utils/ApiError';
+import { StorageService } from './StorageService';
+import { TextExtractor } from '../utils/textExtractor';
+import { OpenAIRagService } from './OpenAIRagService';
 
-export interface DocumentRecord {
+interface Document {
   id: string;
   userId: string;
-  originalName: string;
-  storedName: string;
-  fileSize: number;
+  courseId: string | null;
+  originalFilename: string;
   mimeType: string;
-  status: 'pending' | 'processing' | 'indexed' | 'error';
-  pageCount: number | null;
-  rawText: string | null;
+  sizeBytes: number;
+  sha256Hash: string;
+  storageKey: string | null;
+  openaiFileId: string | null;
+  openaiVectorStoreId: string | null;
+  openaiVectorStoreFileId: string | null;
+  status: string;
+  errorMessage: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** Mapea fila de BD (snake_case) → DocumentRecord (camelCase). */
-function rowToDocument(row: Record<string, unknown>): DocumentRecord {
-  return {
-    id: row.id as string,
-    userId: row.user_id as string,
-    originalName: row.original_name as string,
-    storedName: row.stored_name as string,
-    fileSize: row.file_size as number,
-    mimeType: row.mime_type as string,
-    status: row.status as DocumentRecord['status'],
-    pageCount: row.page_count as number | null,
-    rawText: row.raw_text as string | null,
-    createdAt: row.created_at as Date,
-    updatedAt: row.updated_at as Date,
-  };
-}
-
-/** Devuelve la ruta absoluta al directorio de uploads, creándolo si no existe. */
-function getUploadDir(): string {
-  const dir = path.resolve(process.cwd(), uploadConfig.uploadDir);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return dir;
-}
-
-/**
- * Limpia el nombre original del archivo para guardar un título legible:
- *  - Quita la extensión (.pdf).
- *  - Normaliza acentos (á → a, ñ → n, etc.).
- *  - Elimina cualquier carácter que no sea letra, número o espacio.
- *  - Colapsa espacios múltiples y recorta los extremos.
- * Si tras limpiar queda vacío, devuelve "Documento".
- */
-function sanitizeTitle(originalName: string): string {
-  const withoutExt = originalName.replace(/\.[^/.]+$/, '');
-  const cleaned = withoutExt
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // quita marcas de acento
-    .replace(/[^a-zA-Z0-9 ]+/g, ' ') // solo letras, números y espacios
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned.length > 0 ? cleaned : 'Documento';
-}
-
 export class DocumentService {
-  /**
-   * Guarda el archivo en disco, extrae metadatos y crea el registro en BD.
-   */
   static async uploadDocument(
     userId: string,
-    file: Express.Multer.File
-  ): Promise<DocumentRecord> {
-    // Nombre único en disco para evitar colisiones y path-traversal
-    const ext = path.extname(file.originalname).toLowerCase() || '.pdf';
-    const storedName = `${uuidv4()}${ext}`;
-    const uploadDir = getUploadDir();
-    const filePath = path.join(uploadDir, storedName);
-
-    // 1. Persistir en disco
-    fs.writeFileSync(filePath, file.buffer);
-    logger.info(`Archivo guardado: ${storedName}`);
-
-    // 2. Extraer número de páginas y texto plano del PDF (falla suavemente)
-    let pageCount: number | null = null;
-    let rawText: string | null = null;
+    file: Express.Multer.File,
+    courseId?: string | null
+  ): Promise<Document> {
     try {
-      const parsed = await pdfParse(file.buffer);
-      pageCount = parsed.numpages ?? null;
-      // Limpiar texto: colapsar líneas vacías múltiples y espacios extra
-      rawText = parsed.text
-        .replace(/\r\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim() || null;
-      logger.info(`PDF parseado: ${pageCount} páginas, ${rawText?.length ?? 0} caracteres`);
-    } catch (err) {
-      logger.warn(`No se pudo leer metadatos del PDF "${file.originalname}": ${err}`);
+      const sha256Hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+
+      const existingDoc = await this.findExistingDocument(userId, courseId, sha256Hash);
+      if (existingDoc && existingDoc.status === 'indexed') {
+        logger.info(`Documento duplicado encontrado: ${existingDoc.id}`);
+        return existingDoc;
+      }
+
+      const documentId = uuidv4();
+      const filename = `${documentId}-${file.originalname}`;
+
+      const doc = await query<Document>(
+        `INSERT INTO documents 
+         (id, user_id, course_id, original_filename, mime_type, size_bytes, sha256_hash, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, user_id as "userId", course_id as "courseId", 
+                   original_filename as "originalFilename", mime_type as "mimeType",
+                   size_bytes as "sizeBytes", sha256_hash as "sha256Hash",
+                   storage_key as "storageKey", openai_file_id as "openaiFileId",
+                   openai_vector_store_id as "openaiVectorStoreId",
+                   openai_vector_store_file_id as "openaiVectorStoreFileId",
+                   status, error_message as "errorMessage",
+                   created_at as "createdAt", updated_at as "updatedAt"`,
+        [documentId, userId, courseId || null, file.originalname, file.mimetype, file.size, sha256Hash, 'uploaded']
+      );
+
+      const document = doc.rows[0];
+
+      this.processDocumentAsync(document.id, file, filename, userId, courseId).catch((error) => {
+        logger.error(`Error procesando documento ${document.id}:`, error);
+      });
+
+      return document;
+    } catch (error) {
+      logger.error('Error en uploadDocument:', error);
+      throw error;
     }
-
-    // 3. Insertar en base de datos
-    const pool = getPool();
-    const cleanTitle = sanitizeTitle(file.originalname);
-    const result = await pool.query<Record<string, unknown>>(
-      `INSERT INTO documents
-         (user_id, original_name, stored_name, file_size, mime_type, status, page_count, raw_text)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
-       RETURNING *`,
-      [userId, cleanTitle, storedName, file.size, file.mimetype, pageCount, rawText]
-    );
-
-    const doc = rowToDocument(result.rows[0]);
-    logger.info(`Documento creado en BD: ${doc.id} para usuario ${userId}`);
-    return doc;
   }
 
-  /**
-   * Devuelve todos los documentos del usuario ordenados por fecha de creación.
-   */
-  static async getUserDocuments(userId: string): Promise<DocumentRecord[]> {
-    const pool = getPool();
-    const result = await pool.query<Record<string, unknown>>(
-      `SELECT * FROM documents WHERE user_id = $1 ORDER BY created_at DESC`,
-      [userId]
-    );
-    return result.rows.map(rowToDocument);
+  private static async processDocumentAsync(
+    documentId: string,
+    file: Express.Multer.File,
+    filename: string,
+    userId: string,
+    courseId?: string | null
+  ): Promise<void> {
+    try {
+      await this.updateDocumentStatus(documentId, 'processing');
+
+      const storageKey = await StorageService.saveFile(file, filename);
+
+      await query(
+        `UPDATE documents SET storage_key = $1, updated_at = NOW() WHERE id = $2`,
+        [storageKey, documentId]
+      );
+
+      const textResult = await TextExtractor.extractText(storageKey, file.mimetype);
+
+      if (!textResult.hasText) {
+        await this.updateDocumentStatus(
+          documentId,
+          'no_text_detected',
+          'El documento no contiene suficiente texto extraíble. Puede ser una imagen escaneada.'
+        );
+        return;
+      }
+
+      await this.updateDocumentStatus(documentId, 'indexing');
+
+      const ragResult = await OpenAIRagService.uploadAndIndexDocument({
+        file,
+        userId,
+        courseId,
+        documentId,
+        storageKey,
+      });
+
+      await query(
+        `UPDATE documents 
+         SET openai_file_id = $1, 
+             openai_vector_store_id = $2,
+             openai_vector_store_file_id = $3,
+             status = $4,
+             updated_at = NOW()
+         WHERE id = $5`,
+        [
+          ragResult.openaiFileId,
+          ragResult.openaiVectorStoreId,
+          ragResult.openaiVectorStoreFileId,
+          'indexed',
+          documentId,
+        ]
+      );
+
+      logger.info(`Documento ${documentId} indexado correctamente`);
+    } catch (error) {
+      logger.error(`Error procesando documento ${documentId}:`, error);
+      await this.updateDocumentStatus(
+        documentId,
+        'failed',
+        error instanceof Error ? error.message : 'Error desconocido'
+      );
+    }
   }
 
-  /**
-   * Elimina el documento del disco y de la BD.
-   * Verifica propiedad antes de borrar (autorización).
-   */
+  private static async updateDocumentStatus(
+    documentId: string,
+    status: string,
+    errorMessage?: string
+  ): Promise<void> {
+    await query(
+      `UPDATE documents SET status = $1, error_message = $2, updated_at = NOW() WHERE id = $3`,
+      [status, errorMessage || null, documentId]
+    );
+  }
+
+  private static async findExistingDocument(
+    userId: string,
+    courseId: string | null | undefined,
+    sha256Hash: string
+  ): Promise<Document | null> {
+    const result = await query<Document>(
+      `SELECT id, user_id as "userId", course_id as "courseId", 
+              original_filename as "originalFilename", mime_type as "mimeType",
+              size_bytes as "sizeBytes", sha256_hash as "sha256Hash",
+              storage_key as "storageKey", openai_file_id as "openaiFileId",
+              openai_vector_store_id as "openaiVectorStoreId",
+              openai_vector_store_file_id as "openaiVectorStoreFileId",
+              status, error_message as "errorMessage",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM documents
+       WHERE user_id = $1 
+         AND (course_id = $2 OR (course_id IS NULL AND $2 IS NULL))
+         AND sha256_hash = $3
+         AND status != 'deleted'
+       LIMIT 1`,
+      [userId, courseId || null, sha256Hash]
+    );
+
+    return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
+  static async getUserDocuments(userId: string, courseId?: string): Promise<Document[]> {
+    try {
+      let queryText = `
+        SELECT id, user_id as "userId", course_id as "courseId", 
+               original_filename as "originalFilename", mime_type as "mimeType",
+               size_bytes as "sizeBytes", sha256_hash as "sha256Hash",
+               storage_key as "storageKey", openai_file_id as "openaiFileId",
+               openai_vector_store_id as "openaiVectorStoreId",
+               openai_vector_store_file_id as "openaiVectorStoreFileId",
+               status, error_message as "errorMessage",
+               created_at as "createdAt", updated_at as "updatedAt"
+        FROM documents
+        WHERE user_id = $1 AND status != 'deleted'
+      `;
+      const params: any[] = [userId];
+
+      if (courseId) {
+        queryText += ' AND course_id = $2';
+        params.push(courseId);
+      }
+
+      queryText += ' ORDER BY created_at DESC';
+
+      const result = await query<Document>(queryText, params);
+      return result.rows;
+    } catch (error) {
+      logger.error('Error en getUserDocuments:', error);
+      throw error;
+    }
+  }
+
   static async deleteDocument(userId: string, documentId: string): Promise<void> {
-    const pool = getPool();
+    try {
+      const result = await query<Document>(
+        `SELECT id, user_id as "userId", storage_key as "storageKey"
+         FROM documents
+         WHERE id = $1 AND user_id = $2 AND status != 'deleted'`,
+        [documentId, userId]
+      );
 
-    const check = await pool.query<Record<string, unknown>>(
-      'SELECT stored_name FROM documents WHERE id = $1 AND user_id = $2',
-      [documentId, userId]
-    );
+      if (result.rows.length === 0) {
+        throw ApiError.notFound('Documento no encontrado');
+      }
 
-    if (check.rowCount === 0) {
-      throw ApiError.notFound('Documento no encontrado o no tienes permiso para eliminarlo.');
+      const document = result.rows[0];
+
+      if (document.storageKey) {
+        await StorageService.deleteFile(document.storageKey);
+      }
+
+      await query(
+        `UPDATE documents SET status = 'deleted', updated_at = NOW() WHERE id = $1`,
+        [documentId]
+      );
+
+      logger.info(`Documento ${documentId} eliminado`);
+    } catch (error) {
+      logger.error('Error en deleteDocument:', error);
+      throw error;
     }
-
-    const storedName = check.rows[0].stored_name as string;
-
-    await pool.query('DELETE FROM documents WHERE id = $1', [documentId]);
-
-    const filePath = path.join(getUploadDir(), storedName);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
-    logger.info(`Documento ${documentId} eliminado por usuario ${userId}`);
   }
 }
