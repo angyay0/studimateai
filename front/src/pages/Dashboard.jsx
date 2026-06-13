@@ -167,7 +167,12 @@ function Dashboard({ onLogout }) {
                           </div>
                           <div className="min-w-0">
                             <h3 className="font-semibold text-gray-900 truncate">{doc.title}</h3>
-                            <p className="text-sm text-gray-600">{doc.pages} pages • {doc.quizzes} quizzes</p>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              {doc.status === 'indexed' ? 'Listo' :
+                               doc.status === 'processing' || doc.status === 'indexing' ? 'Procesando...' :
+                               doc.status === 'error' || doc.status === 'failed' ? 'Error al procesar' :
+                               doc.status}
+                            </p>
                           </div>
                         </div>
                         <Link to="/quiz-mode" className="btn-primary shrink-0">
@@ -179,7 +184,7 @@ function Dashboard({ onLogout }) {
                   ))}
 
                 {documents.length > 0 && (
-                  <Link to="/upload" className="card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
+                  <Link to="/upload" className="mt-2 card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
                     <div className="flex items-center justify-center gap-3 py-4">
                       <Upload className="w-5 h-5 text-gray-400" />
                       <span className="text-gray-600 font-medium">Upload new document</span>

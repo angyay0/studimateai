@@ -18,7 +18,12 @@ export class TextExtractor {
       const dataBuffer = fs.readFileSync(filePath);
       const data = await pdfParse(dataBuffer);
 
-      const text = data.text.trim();
+      const text = data.text
+        .replace(/\r\n/g, '\n')           // normaliza saltos de línea Windows
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // quita caracteres de control no imprimibles
+        .replace(/\uFFFD/g, '')              // quita caracteres de reemplazo Unicode
+        .replace(/\n{3,}/g, '\n\n')         // colapsa líneas vacías múltiples
+        .trim();
       const characterCount = text.length;
       const hasText = characterCount >= MIN_TEXT_THRESHOLD;
 
