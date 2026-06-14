@@ -17,8 +17,19 @@ let pool: Pool | null = null;
 export function getPool(): Pool {
   if (!pool) {
     const connStr = databaseConfig.connectionString ?? '';
+    
+    // Detectar si es una base de datos remota (no localhost)
+    const isRemoteDb = connStr && 
+      !connStr.includes('localhost') && 
+      !connStr.includes('127.0.0.1') &&
+      !connStr.includes('::1');
+    
+    // Usar SSL si: es producción, tiene sslmode=require, o es base de datos remota
     const requireSsl =
-      env.isProduction || connStr.includes('sslmode=require');
+      env.isProduction || 
+      connStr.includes('sslmode=require') ||
+      connStr.includes('sslmode=no-verify') ||
+      isRemoteDb;
 
     const poolConfig: any = {
       max: 10,

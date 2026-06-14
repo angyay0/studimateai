@@ -159,10 +159,6 @@ app.post('/api/auth/logout', authMiddleware, async (req: Request, res: Response,
   }
 });
 
-// Montar rutas de la API (documentos, RAG, exams, etc.)
-// Se monta después de las rutas de auth para que las implementadas tomen precedencia
-app.use('/api', apiRouter);
-
 // API Routes (to be implemented)
 app.get('/api', (req: Request, res: Response) => {
   res.json({ 
@@ -174,13 +170,15 @@ app.get('/api', (req: Request, res: Response) => {
       chat: '/api/chat',
       quizzes: '/api/quizzes',
       exams: '/api/exams',
+      rag: '/api/rag',
       openaiHealth: '/api/openai/health',
       health: '/api/health',
     },
   });
 });
 
-// Monta los routers de dominio (documentos, chat, quizzes, etc.) bajo /api.
+// Montar rutas de la API (documentos, RAG, exams, etc.)
+// Se monta después de las rutas de auth para que las implementadas tomen precedencia
 app.use('/api', apiRouter);
 
 // Error handling middleware
