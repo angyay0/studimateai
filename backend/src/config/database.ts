@@ -38,7 +38,10 @@ export function getPool(): Pool {
       ssl: requireSsl ? { rejectUnauthorized: false } : undefined,
     };
 
-    if (
+    // Priorizar DATABASE_URL sobre parámetros individuales
+    if (connStr) {
+      poolConfig.connectionString = connStr;
+    } else if (
       databaseConfig.host &&
       databaseConfig.user &&
       databaseConfig.password &&
@@ -49,11 +52,14 @@ export function getPool(): Pool {
       poolConfig.database = databaseConfig.database;
       poolConfig.user = databaseConfig.user;
       poolConfig.password = databaseConfig.password;
-    } else if (connStr) {
-      poolConfig.connectionString = connStr;
     }
 
     pool = new Pool(poolConfig);
+    
+    // Manejar errores inesperados del pool
+    pool.on('error', (err) => {
+      console.error('Unexpected error on idle database client:', err);
+    });
   }
   return pool;
 }
@@ -66,7 +72,8 @@ export async function checkDatabaseConnection(): Promise<boolean> {
   try {
     await getPool().query('SELECT 1');
     return true;
-  } catch {
+  } catch (error) {
+    console.error('Database connection failed:', error instanceof Error ? error.message : error);
     return false;
   }
 }
