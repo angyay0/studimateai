@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Target, Clock, Award, ChevronRight, Settings, ListChecks } from 'lucide-react'
+import { Target, Clock, Award, ChevronRight, Settings, ListChecks, PlayCircle, TimerReset } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { quizzesAPI } from '../services/api'
 
@@ -16,15 +16,44 @@ const initialExamConfig = {
   difficulty: ''
 }
 
+const formatTime = (totalSeconds) => {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+const clampNumber = (value, min, max) => {
+  const numberValue = Number(value)
+
+  if (Number.isNaN(numberValue)) return min
+
+  return Math.min(Math.max(numberValue, min), max)
+}
+
 function QuizMode({ onLogout }) {
   const [quizzes, setQuizzes] = useState([])
   const [loading, setLoading] = useState(true)
   const [examConfig, setExamConfig] = useState(initialExamConfig)
   const [configSaved, setConfigSaved] = useState(false)
+  const [activeExam, setActiveExam] = useState(null)
+  const [remainingSeconds, setRemainingSeconds] = useState(0)
 
   useEffect(() => {
     loadQuizzes()
   }, [])
+
+  useEffect(() => {
+    if (!activeExam || remainingSeconds <= 0) {
+      return undefined
+    }
+
+    const timerId = window.setInterval(() => {
+      setRemainingSeconds((current) => Math.max(current - 1, 0))
+    }, 1000)
+
+    return () => window.clearInterval(timerId)
+  }, [activeExam, remainingSeconds])
 
   const loadQuizzes = async () => {
     try {
@@ -69,18 +98,45 @@ function QuizMode({ onLogout }) {
     setConfigSaved(false)
   }
 
-  const handleSubmitConfig = (event) => {
-    event.preventDefault()
-
-    const preparedConfig = {
+  const buildPreparedConfig = () => (
+    {
       ...examConfig,
-      questionCount: Number(examConfig.questionCount),
-      durationMinutes: Number(examConfig.durationMinutes),
+      questionCount: clampNumber(examConfig.questionCount, 5, 50),
+      durationMinutes: clampNumber(examConfig.durationMinutes, 5, 180),
       difficulty: examConfig.difficulty || null
+    }
+  )
+
+  const saveExamConfig = () => {
+    const preparedConfig = {
+      ...buildPreparedConfig(),
+      savedAt: new Date().toISOString()
     }
 
     sessionStorage.setItem('studimate.examConfig', JSON.stringify(preparedConfig))
     setConfigSaved(true)
+
+    return preparedConfig
+  }
+
+  const handleSubmitConfig = (event) => {
+    event.preventDefault()
+    saveExamConfig()
+  }
+
+  const handleStartExam = () => {
+    const preparedConfig = saveExamConfig()
+
+    setActiveExam({
+      ...preparedConfig,
+      startedAt: new Date().toISOString()
+    })
+    setRemainingSeconds(preparedConfig.durationMinutes * 60)
+  }
+
+  const handleResetExam = () => {
+    setActiveExam(null)
+    setRemainingSeconds(0)
   }
 
   return (
@@ -96,6 +152,50 @@ function QuizMode({ onLogout }) {
             </div>
             <p className="text-gray-600">Practice with AI-generated quizzes and track your progress</p>
           </div>
+
+          {activeExam && (
+            <div className="card mb-8 border-primary-200 bg-white">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <PlayCircle className="w-5 h-5 text-primary-600" />
+                    <h2 className="text-2xl font-bold text-gray-900">Examen en curso</h2>
+                  </div>
+                  <p className="text-gray-600">
+                    {activeExam.questionCount} reactivos configurados
+                    {activeExam.difficulty ? ` | dificultad ${activeExam.difficulty}` : ' | sin dificultad fija'}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className={`rounded-xl border px-5 py-4 text-center ${
+                    remainingSeconds <= 60
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : 'border-green-200 bg-green-50 text-green-700'
+                  }`}>
+                    <div className="flex items-center justify-center gap-2 text-sm font-semibold">
+                      <Clock className="w-4 h-4" />
+                      Tiempo restante
+                    </div>
+                    <p className="mt-1 font-mono text-4xl font-bold tabular-nums">
+                      {formatTime(remainingSeconds)}
+                    </p>
+                  </div>
+
+                  <button type="button" onClick={handleResetExam} className="btn-secondary">
+                    <TimerReset className="w-4 h-4" />
+                    Reiniciar
+                  </button>
+                </div>
+              </div>
+
+              {remainingSeconds === 0 && (
+                <div className="mt-5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-800">
+                  Tiempo agotado. La entrega automatica se conectara en el siguiente incremento.
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="card mb-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -186,6 +286,10 @@ function QuizMode({ onLogout }) {
                 <button type="submit" className="btn-primary">
                   Guardar configuracion
                   <ChevronRight className="w-4 h-4" />
+                </button>
+                <button type="button" onClick={handleStartExam} className="btn-secondary">
+                  <PlayCircle className="w-4 h-4" />
+                  Iniciar examen
                 </button>
                 {configSaved && (
                   <p className="text-sm font-medium text-green-700">
