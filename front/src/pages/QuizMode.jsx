@@ -1,7 +1,21 @@
-import { useState, useEffect } from 'react'
-import { Target, Clock, Award, ChevronRight, Settings, ListChecks, PlayCircle, TimerReset } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  Target,
+  Clock,
+  Award,
+  ChevronRight,
+  Settings,
+  ListChecks,
+  PlayCircle,
+  TimerReset,
+  CheckCircle,
+  XCircle,
+  FileText
+} from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { quizzesAPI } from '../services/api'
+
+const attemptsStorageKey = 'studimate.examAttempts'
 
 const difficultyOptions = [
   { value: '', label: 'Sin preferencia' },
@@ -15,6 +29,73 @@ const initialExamConfig = {
   durationMinutes: 30,
   difficulty: ''
 }
+
+const questionBank = [
+  {
+    topic: 'Biologia celular',
+    difficulty: 'Easy',
+    question: 'Que organelo produce la mayor parte de la energia celular?',
+    options: ['Nucleo', 'Mitocondria', 'Ribosoma', 'Lisosoma'],
+    correctAnswer: 'Mitocondria',
+    explanation: 'La mitocondria genera ATP mediante respiracion celular, por eso se asocia con la energia de la celula.'
+  },
+  {
+    topic: 'Quimica organica',
+    difficulty: 'Medium',
+    question: 'Que tipo de enlace comparte pares de electrones entre atomos?',
+    options: ['Ionico', 'Covalente', 'Metalico', 'Puente de hidrogeno'],
+    correctAnswer: 'Covalente',
+    explanation: 'En un enlace covalente los atomos comparten electrones para completar sus capas de valencia.'
+  },
+  {
+    topic: 'Historia mundial',
+    difficulty: 'Medium',
+    question: 'Que evento detono directamente el inicio de la Primera Guerra Mundial?',
+    options: ['Tratado de Versalles', 'Revolucion rusa', 'Asesinato del archiduque Francisco Fernando', 'Caida de Berlin'],
+    correctAnswer: 'Asesinato del archiduque Francisco Fernando',
+    explanation: 'El asesinato en Sarajevo activo alianzas militares europeas y precipito el conflicto.'
+  },
+  {
+    topic: 'Fisica',
+    difficulty: 'Hard',
+    question: 'Si una fuerza neta actua sobre un objeto, que cambia necesariamente?',
+    options: ['Su masa', 'Su aceleracion', 'Su volumen', 'Su temperatura'],
+    correctAnswer: 'Su aceleracion',
+    explanation: 'Por la segunda ley de Newton, una fuerza neta produce aceleracion proporcional a F/m.'
+  },
+  {
+    topic: 'Matematicas',
+    difficulty: 'Easy',
+    question: 'Cual es el resultado de 12 x 8?',
+    options: ['88', '92', '96', '108'],
+    correctAnswer: '96',
+    explanation: 'Multiplicar 12 por 8 equivale a 10 x 8 mas 2 x 8, que suma 96.'
+  },
+  {
+    topic: 'Comprension lectora',
+    difficulty: 'Medium',
+    question: 'Que identifica mejor la idea principal de un texto?',
+    options: ['Un dato aislado', 'El mensaje central', 'Una cita secundaria', 'La primera palabra'],
+    correctAnswer: 'El mensaje central',
+    explanation: 'La idea principal resume el punto mas importante que organiza el resto del texto.'
+  },
+  {
+    topic: 'Programacion',
+    difficulty: 'Hard',
+    question: 'Que estructura permite busquedas promedio O(1) por clave?',
+    options: ['Array ordenado', 'Lista enlazada', 'Tabla hash', 'Pila'],
+    correctAnswer: 'Tabla hash',
+    explanation: 'Una tabla hash calcula una posicion a partir de la clave, lo que permite acceso promedio constante.'
+  },
+  {
+    topic: 'Metodos de estudio',
+    difficulty: 'Easy',
+    question: 'Que tecnica mejora la retencion al espaciar sesiones de repaso?',
+    options: ['Lectura pasiva', 'Repeticion espaciada', 'Subrayar todo', 'Estudiar solo una vez'],
+    correctAnswer: 'Repeticion espaciada',
+    explanation: 'La repeticion espaciada fortalece la memoria al recuperar informacion en intervalos crecientes.'
+  }
+]
 
 const formatTime = (totalSeconds) => {
   const minutes = Math.floor(totalSeconds / 60)
@@ -31,6 +112,36 @@ const clampNumber = (value, min, max) => {
   return Math.min(Math.max(numberValue, min), max)
 }
 
+const getStoredAttempts = () => {
+  try {
+    return JSON.parse(localStorage.getItem(attemptsStorageKey)) || []
+  } catch {
+    return []
+  }
+}
+
+const saveStoredAttempt = (attempt) => {
+  const attempts = [attempt, ...getStoredAttempts()].slice(0, 10)
+  localStorage.setItem(attemptsStorageKey, JSON.stringify(attempts))
+  return attempts
+}
+
+const generatePracticeQuestions = (config) => {
+  const filteredBank = config.difficulty
+    ? questionBank.filter((question) => question.difficulty === config.difficulty)
+    : questionBank
+  const source = filteredBank.length > 0 ? filteredBank : questionBank
+
+  return Array.from({ length: config.questionCount }, (_, index) => {
+    const question = source[index % source.length]
+
+    return {
+      ...question,
+      id: index + 1
+    }
+  })
+}
+
 function QuizMode({ onLogout }) {
   const [quizzes, setQuizzes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -38,13 +149,17 @@ function QuizMode({ onLogout }) {
   const [configSaved, setConfigSaved] = useState(false)
   const [activeExam, setActiveExam] = useState(null)
   const [remainingSeconds, setRemainingSeconds] = useState(0)
+  const [answers, setAnswers] = useState({})
+  const [result, setResult] = useState(null)
+  const [recentAttempts, setRecentAttempts] = useState([])
 
   useEffect(() => {
     loadQuizzes()
+    setRecentAttempts(getStoredAttempts())
   }, [])
 
   useEffect(() => {
-    if (!activeExam || remainingSeconds <= 0) {
+    if (!activeExam || result || remainingSeconds <= 0) {
       return undefined
     }
 
@@ -53,7 +168,69 @@ function QuizMode({ onLogout }) {
     }, 1000)
 
     return () => window.clearInterval(timerId)
-  }, [activeExam, remainingSeconds])
+  }, [activeExam, remainingSeconds, result])
+
+  const buildPreparedConfig = useCallback(() => (
+    {
+      ...examConfig,
+      questionCount: clampNumber(examConfig.questionCount, 5, 50),
+      durationMinutes: clampNumber(examConfig.durationMinutes, 5, 180),
+      difficulty: examConfig.difficulty || null
+    }
+  ), [examConfig])
+
+  const gradeExam = useCallback((exam, submittedAnswers, submitReason) => {
+    const totalQuestions = exam.questions.length
+    const reviewedQuestions = exam.questions.map((question) => {
+      const selectedAnswer = submittedAnswers[question.id] || null
+      const isCorrect = selectedAnswer === question.correctAnswer
+
+      return {
+        ...question,
+        selectedAnswer,
+        isCorrect
+      }
+    })
+    const correctAnswers = reviewedQuestions.filter((question) => question.isCorrect).length
+    const incorrectAnswers = totalQuestions - correctAnswers
+    const score = Math.round((correctAnswers / totalQuestions) * 100)
+    const timeTakenSeconds = (exam.durationMinutes * 60) - remainingSeconds
+
+    return {
+      id: `attempt-${Date.now()}`,
+      submittedAt: new Date().toISOString(),
+      submitReason,
+      score,
+      correctAnswers,
+      incorrectAnswers,
+      totalQuestions,
+      timeTakenSeconds,
+      config: {
+        questionCount: exam.questionCount,
+        durationMinutes: exam.durationMinutes,
+        difficulty: exam.difficulty
+      },
+      questions: reviewedQuestions
+    }
+  }, [remainingSeconds])
+
+  const handleSubmitExam = useCallback((submitReason = 'manual') => {
+    if (!activeExam || result) return
+
+    const gradedAttempt = gradeExam(activeExam, answers, submitReason)
+    const attempts = saveStoredAttempt(gradedAttempt)
+
+    setResult(gradedAttempt)
+    setRecentAttempts(attempts)
+    setActiveExam(null)
+    setRemainingSeconds(0)
+  }, [activeExam, answers, gradeExam, result])
+
+  useEffect(() => {
+    if (activeExam && !result && remainingSeconds === 0) {
+      handleSubmitExam('auto')
+    }
+  }, [activeExam, handleSubmitExam, remainingSeconds, result])
 
   const loadQuizzes = async () => {
     try {
@@ -64,17 +241,6 @@ function QuizMode({ onLogout }) {
     } finally {
       setLoading(false)
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex h-screen">
-        <Sidebar onLogout={onLogout} />
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-600">Loading quizzes...</p>
-        </div>
-      </div>
-    )
   }
 
   const getDifficultyColor = (difficulty) => {
@@ -98,15 +264,6 @@ function QuizMode({ onLogout }) {
     setConfigSaved(false)
   }
 
-  const buildPreparedConfig = () => (
-    {
-      ...examConfig,
-      questionCount: clampNumber(examConfig.questionCount, 5, 50),
-      durationMinutes: clampNumber(examConfig.durationMinutes, 5, 180),
-      difficulty: examConfig.difficulty || null
-    }
-  )
-
   const saveExamConfig = () => {
     const preparedConfig = {
       ...buildPreparedConfig(),
@@ -126,23 +283,47 @@ function QuizMode({ onLogout }) {
 
   const handleStartExam = () => {
     const preparedConfig = saveExamConfig()
+    const questions = generatePracticeQuestions(preparedConfig)
 
     setActiveExam({
       ...preparedConfig,
+      id: `exam-${Date.now()}`,
+      questions,
       startedAt: new Date().toISOString()
     })
     setRemainingSeconds(preparedConfig.durationMinutes * 60)
+    setAnswers({})
+    setResult(null)
   }
 
   const handleResetExam = () => {
     setActiveExam(null)
     setRemainingSeconds(0)
+    setAnswers({})
+  }
+
+  const handleAnswerQuestion = (questionId, option) => {
+    setAnswers((current) => ({
+      ...current,
+      [questionId]: option
+    }))
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-screen">
+        <Sidebar onLogout={onLogout} />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-gray-600">Loading quizzes...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar onLogout={onLogout} />
-      
+
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-8">
           <div className="mb-8">
@@ -152,6 +333,76 @@ function QuizMode({ onLogout }) {
             </div>
             <p className="text-gray-600">Practice with AI-generated quizzes and track your progress</p>
           </div>
+
+          {result && (
+            <div className="card mb-8 border-green-200">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Award className="w-6 h-6 text-green-600" />
+                    <h2 className="text-2xl font-bold text-gray-900">Resultados del examen</h2>
+                  </div>
+                  <p className="text-gray-600">
+                    Entrega {result.submitReason === 'auto' ? 'automatica por tiempo agotado' : 'manual'} guardada en el historial local.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg bg-primary-50 px-4 py-3 text-center">
+                    <p className="text-xs font-semibold text-primary-700">Calificacion</p>
+                    <p className="text-3xl font-bold text-primary-700">{result.score}%</p>
+                  </div>
+                  <div className="rounded-lg bg-green-50 px-4 py-3 text-center">
+                    <p className="text-xs font-semibold text-green-700">Aciertos</p>
+                    <p className="text-3xl font-bold text-green-700">{result.correctAnswers}</p>
+                  </div>
+                  <div className="rounded-lg bg-red-50 px-4 py-3 text-center">
+                    <p className="text-xs font-semibold text-red-700">Errores</p>
+                    <p className="text-3xl font-bold text-red-700">{result.incorrectAnswers}</p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 px-4 py-3 text-center">
+                    <p className="text-xs font-semibold text-blue-700">Tiempo</p>
+                    <p className="text-3xl font-bold text-blue-700">{formatTime(result.timeTakenSeconds)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <h3 className="mb-4 text-xl font-bold text-gray-900">Revision de reactivos</h3>
+                <div className="space-y-4">
+                  {result.questions.map((question) => (
+                    <div key={question.id} className="rounded-xl border border-gray-200 bg-white p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-500">Reactivo {question.id} | {question.topic}</p>
+                          <h4 className="mt-1 font-semibold text-gray-900">{question.question}</h4>
+                        </div>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+                          question.isCorrect
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {question.isCorrect ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                          {question.isCorrect ? 'Correcto' : 'Incorrecto'}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                          <span className="font-semibold">Tu respuesta:</span> {question.selectedAnswer || 'Sin responder'}
+                        </p>
+                        <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
+                          <span className="font-semibold">Respuesta correcta:</span> {question.correctAnswer}
+                        </p>
+                      </div>
+                      <p className="mt-3 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                        <span className="font-semibold">Explicacion:</span> {question.explanation}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {activeExam && (
             <div className="card mb-8 border-primary-200 bg-white">
@@ -182,6 +433,9 @@ function QuizMode({ onLogout }) {
                     </p>
                   </div>
 
+                  <button type="button" onClick={() => handleSubmitExam('manual')} className="btn-primary">
+                    Entregar examen
+                  </button>
                   <button type="button" onClick={handleResetExam} className="btn-secondary">
                     <TimerReset className="w-4 h-4" />
                     Reiniciar
@@ -189,116 +443,144 @@ function QuizMode({ onLogout }) {
                 </div>
               </div>
 
-              {remainingSeconds === 0 && (
-                <div className="mt-5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-800">
-                  Tiempo agotado. La entrega automatica se conectara en el siguiente incremento.
-                </div>
-              )}
+              <div className="mt-8 space-y-4">
+                {activeExam.questions.map((question) => (
+                  <div key={question.id} className="rounded-xl border border-gray-200 p-5">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-500">Reactivo {question.id} | {question.topic}</p>
+                        <h3 className="mt-1 font-semibold text-gray-900">{question.question}</h3>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${getDifficultyColor(question.difficulty)}`}>
+                        {question.difficulty}
+                      </span>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {question.options.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => handleAnswerQuestion(question.id, option)}
+                          className={`rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                            answers[question.id] === option
+                              ? 'border-primary-500 bg-primary-50 text-primary-700'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300'
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          <div className="card mb-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-xl">
-                <div className="flex items-center gap-2 mb-2">
-                  <Settings className="w-5 h-5 text-primary-600" />
-                  <h2 className="text-2xl font-bold text-gray-900">Configurar examen</h2>
+          {!activeExam && (
+            <div className="card mb-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Settings className="w-5 h-5 text-primary-600" />
+                    <h2 className="text-2xl font-bold text-gray-900">Configurar examen</h2>
+                  </div>
+                  <p className="text-gray-600">
+                    Define los reactivos, el tiempo limite y una dificultad opcional antes de iniciar.
+                  </p>
                 </div>
-                <p className="text-gray-600">
-                  Define los reactivos, el tiempo limite y una dificultad opcional antes de iniciar.
-                </p>
-              </div>
 
-              <div className="rounded-lg border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800 lg:min-w-[260px]">
-                <div className="flex items-center gap-2 font-semibold">
-                  <ListChecks className="w-4 h-4" />
-                  Resumen
+                <div className="rounded-lg border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800 lg:min-w-[260px]">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <ListChecks className="w-4 h-4" />
+                    Resumen
+                  </div>
+                  <p className="mt-2">
+                    {examConfig.questionCount} reactivos | {examConfig.durationMinutes} min |{' '}
+                    {difficultyOptions.find(option => option.value === examConfig.difficulty)?.label}
+                  </p>
                 </div>
-                <p className="mt-2">
-                  {examConfig.questionCount} reactivos | {examConfig.durationMinutes} min |{' '}
-                  {difficultyOptions.find(option => option.value === examConfig.difficulty)?.label}
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSubmitConfig} className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
-              <div>
-                <label htmlFor="questionCount" className="mb-2 block text-sm font-semibold text-gray-900">
-                  Numero de reactivos
-                </label>
-                <input
-                  id="questionCount"
-                  type="number"
-                  min="5"
-                  max="50"
-                  step="1"
-                  value={examConfig.questionCount}
-                  onChange={(event) => updateExamConfig('questionCount', event.target.value)}
-                  className="input-field"
-                  required
-                />
-                <p className="mt-2 text-xs text-gray-500">Minimo 5, maximo 50 preguntas.</p>
               </div>
 
-              <div>
-                <label htmlFor="durationMinutes" className="mb-2 block text-sm font-semibold text-gray-900">
-                  Tiempo limite
-                </label>
-                <div className="relative">
+              <form onSubmit={handleSubmitConfig} className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
+                <div>
+                  <label htmlFor="questionCount" className="mb-2 block text-sm font-semibold text-gray-900">
+                    Numero de reactivos
+                  </label>
                   <input
-                    id="durationMinutes"
+                    id="questionCount"
                     type="number"
                     min="5"
-                    max="180"
-                    step="5"
-                    value={examConfig.durationMinutes}
-                    onChange={(event) => updateExamConfig('durationMinutes', event.target.value)}
-                    className="input-field pr-16"
+                    max="50"
+                    step="1"
+                    value={examConfig.questionCount}
+                    onChange={(event) => updateExamConfig('questionCount', event.target.value)}
+                    className="input-field"
                     required
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
-                    min
-                  </span>
+                  <p className="mt-2 text-xs text-gray-500">Minimo 5, maximo 50 preguntas.</p>
                 </div>
-                <p className="mt-2 text-xs text-gray-500">Entre 5 y 180 minutos.</p>
-              </div>
 
-              <div>
-                <label htmlFor="difficulty" className="mb-2 block text-sm font-semibold text-gray-900">
-                  Dificultad opcional
-                </label>
-                <select
-                  id="difficulty"
-                  value={examConfig.difficulty}
-                  onChange={(event) => updateExamConfig('difficulty', event.target.value)}
-                  className="input-field"
-                >
-                  {difficultyOptions.map((option) => (
-                    <option key={option.value || 'none'} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs text-gray-500">Puedes dejarla sin preferencia.</p>
-              </div>
+                <div>
+                  <label htmlFor="durationMinutes" className="mb-2 block text-sm font-semibold text-gray-900">
+                    Tiempo limite
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="durationMinutes"
+                      type="number"
+                      min="5"
+                      max="180"
+                      step="5"
+                      value={examConfig.durationMinutes}
+                      onChange={(event) => updateExamConfig('durationMinutes', event.target.value)}
+                      className="input-field pr-16"
+                      required
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
+                      min
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">Entre 5 y 180 minutos.</p>
+                </div>
 
-              <div className="flex flex-col gap-3 lg:col-span-3 sm:flex-row sm:items-center">
-                <button type="submit" className="btn-primary">
-                  Guardar configuracion
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-                <button type="button" onClick={handleStartExam} className="btn-secondary">
-                  <PlayCircle className="w-4 h-4" />
-                  Iniciar examen
-                </button>
-                {configSaved && (
-                  <p className="text-sm font-medium text-green-700">
-                    Configuracion lista para iniciar el examen.
-                  </p>
-                )}
-              </div>
-            </form>
-          </div>
+                <div>
+                  <label htmlFor="difficulty" className="mb-2 block text-sm font-semibold text-gray-900">
+                    Dificultad opcional
+                  </label>
+                  <select
+                    id="difficulty"
+                    value={examConfig.difficulty}
+                    onChange={(event) => updateExamConfig('difficulty', event.target.value)}
+                    className="input-field"
+                  >
+                    {difficultyOptions.map((option) => (
+                      <option key={option.value || 'none'} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-gray-500">Puedes dejarla sin preferencia.</p>
+                </div>
+
+                <div className="flex flex-col gap-3 lg:col-span-3 sm:flex-row sm:items-center">
+                  <button type="submit" className="btn-primary">
+                    Guardar configuracion
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button type="button" onClick={handleStartExam} className="btn-secondary">
+                    <PlayCircle className="w-4 h-4" />
+                    Iniciar examen
+                  </button>
+                  {configSaved && (
+                    <p className="text-sm font-medium text-green-700">
+                      Configuracion lista para iniciar el examen.
+                    </p>
+                  )}
+                </div>
+              </form>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="stat-card bg-gradient-to-br from-purple-50 to-white border-purple-100">
@@ -307,7 +589,7 @@ function QuizMode({ onLogout }) {
                   <Target className="w-5 h-5 text-primary-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">47</p>
+                  <p className="text-2xl font-bold text-gray-900">{recentAttempts.length || 47}</p>
                   <p className="text-sm text-gray-600">Total Quizzes</p>
                 </div>
               </div>
@@ -319,8 +601,10 @@ function QuizMode({ onLogout }) {
                   <Award className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">83%</p>
-                  <p className="text-sm text-gray-600">Average Score</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {recentAttempts[0]?.score ?? 83}%
+                  </p>
+                  <p className="text-sm text-gray-600">Latest Score</p>
                 </div>
               </div>
             </div>
@@ -331,8 +615,10 @@ function QuizMode({ onLogout }) {
                   <Clock className="w-5 h-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">15m</p>
-                  <p className="text-sm text-gray-600">Avg. Time</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {recentAttempts[0] ? formatTime(recentAttempts[0].timeTakenSeconds) : '15m'}
+                  </p>
+                  <p className="text-sm text-gray-600">Latest Time</p>
                 </div>
               </div>
             </div>
@@ -358,7 +644,7 @@ function QuizMode({ onLogout }) {
                       {quiz.difficulty}
                     </span>
                   </div>
-                  <button className="btn-primary w-full">
+                  <button className="btn-primary w-full" onClick={handleStartExam}>
                     Start Quiz
                     <ChevronRight className="w-4 h-4" />
                   </button>
@@ -370,22 +656,30 @@ function QuizMode({ onLogout }) {
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Recent Quiz Results</h2>
             <div className="space-y-4">
-              {[
-                { title: 'Cell Biology — Mitosis', score: 92, date: 'Yesterday', questions: 20 },
-                { title: 'Organic Chemistry — Bonds', score: 78, date: '2 days ago', questions: 15 },
-                { title: 'World History — WWI', score: 85, date: '3 days ago', questions: 25 }
-              ].map((result, index) => (
-                <div key={index} className="card">
+              {(recentAttempts.length > 0 ? recentAttempts : [
+                { id: 'sample-1', score: 92, submittedAt: 'Yesterday', totalQuestions: 20, correctAnswers: 18 },
+                { id: 'sample-2', score: 78, submittedAt: '2 days ago', totalQuestions: 15, correctAnswers: 12 },
+                { id: 'sample-3', score: 85, submittedAt: '3 days ago', totalQuestions: 25, correctAnswers: 21 }
+              ]).map((attempt) => (
+                <div key={attempt.id} className="card">
                   <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 mb-1">{result.title}</h3>
-                      <p className="text-sm text-gray-500">{result.questions} questions · {result.date}</p>
+                    <div className="flex flex-1 items-center gap-3">
+                      <FileText className="w-5 h-5 text-primary-500" />
+                      <div>
+                        <h3 className="font-semibold text-gray-900 mb-1">Exam Attempt</h3>
+                        <p className="text-sm text-gray-500">
+                          {attempt.totalQuestions} questions | {attempt.correctAnswers} correct |{' '}
+                          {attempt.submittedAt?.includes('T')
+                            ? new Date(attempt.submittedAt).toLocaleString()
+                            : attempt.submittedAt}
+                        </p>
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className={`text-2xl font-bold ${
-                        result.score >= 80 ? 'text-green-600' : result.score >= 60 ? 'text-blue-600' : 'text-orange-600'
+                        attempt.score >= 80 ? 'text-green-600' : attempt.score >= 60 ? 'text-blue-600' : 'text-orange-600'
                       }`}>
-                        {result.score}%
+                        {attempt.score}%
                       </p>
                       <p className="text-sm text-gray-500">Score</p>
                     </div>
