@@ -436,6 +436,41 @@ export const quizzesAPI = {
       correctAnswers: Math.floor(answers.length * (score / 100)),
       timeTaken: '15:30'
     }
+  },
+
+  saveAttempt: async (attempt) => {
+    const response = await fetch(`${API_URL}/api/exams/attempts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authAPI.getAuthHeader()
+      },
+      body: JSON.stringify(attempt)
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to save exam attempt')
+    }
+
+    return data.attempt
+  },
+
+  getAttempts: async () => {
+    const response = await fetch(`${API_URL}/api/exams/attempts`, {
+      headers: {
+        ...authAPI.getAuthHeader()
+      }
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch exam attempts')
+    }
+
+    return data.attempts
   }
 }
 

@@ -152,10 +152,11 @@ function QuizMode({ onLogout }) {
   const [answers, setAnswers] = useState({})
   const [result, setResult] = useState(null)
   const [recentAttempts, setRecentAttempts] = useState([])
+  const [attemptSaveStatus, setAttemptSaveStatus] = useState(null)
 
   useEffect(() => {
     loadQuizzes()
-    setRecentAttempts(getStoredAttempts())
+    loadAttempts()
   }, [])
 
   useEffect(() => {
@@ -214,16 +215,27 @@ function QuizMode({ onLogout }) {
     }
   }, [remainingSeconds])
 
-  const handleSubmitExam = useCallback((submitReason = 'manual') => {
+  const handleSubmitExam = useCallback(async (submitReason = 'manual') => {
     if (!activeExam || result) return
 
     const gradedAttempt = gradeExam(activeExam, answers, submitReason)
-    const attempts = saveStoredAttempt(gradedAttempt)
 
     setResult(gradedAttempt)
-    setRecentAttempts(attempts)
     setActiveExam(null)
     setRemainingSeconds(0)
+    setAttemptSaveStatus('saving')
+
+    try {
+      const savedAttempt = await quizzesAPI.saveAttempt(gradedAttempt)
+      setResult(savedAttempt)
+      setRecentAttempts((current) => [savedAttempt, ...current].slice(0, 10))
+      setAttemptSaveStatus('saved')
+    } catch (error) {
+      console.error('Error saving exam attempt:', error)
+      const attempts = saveStoredAttempt(gradedAttempt)
+      setRecentAttempts(attempts)
+      setAttemptSaveStatus('local')
+    }
   }, [activeExam, answers, gradeExam, result])
 
   useEffect(() => {
@@ -240,6 +252,16 @@ function QuizMode({ onLogout }) {
       console.error('Error loading quizzes:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadAttempts = async () => {
+    try {
+      const attempts = await quizzesAPI.getAttempts()
+      setRecentAttempts(attempts)
+    } catch (error) {
+      console.error('Error loading exam attempts:', error)
+      setRecentAttempts(getStoredAttempts())
     }
   }
 
@@ -294,6 +316,7 @@ function QuizMode({ onLogout }) {
     setRemainingSeconds(preparedConfig.durationMinutes * 60)
     setAnswers({})
     setResult(null)
+    setAttemptSaveStatus(null)
   }
 
   const handleResetExam = () => {
@@ -343,8 +366,19 @@ function QuizMode({ onLogout }) {
                     <h2 className="text-2xl font-bold text-gray-900">Resultados del examen</h2>
                   </div>
                   <p className="text-gray-600">
-                    Entrega {result.submitReason === 'auto' ? 'automatica por tiempo agotado' : 'manual'} guardada en el historial local.
+                    Entrega {result.submitReason === 'auto' ? 'automatica por tiempo agotado' : 'manual'} registrada en el historial.
                   </p>
+                  {attemptSaveStatus === 'saving' && (
+                    <p className="mt-2 text-sm font-medium text-blue-700">Guardando intento...</p>
+                  )}
+                  {attemptSaveStatus === 'saved' && (
+                    <p className="mt-2 text-sm font-medium text-green-700">Intento guardado en backend.</p>
+                  )}
+                  {attemptSaveStatus === 'local' && (
+                    <p className="mt-2 text-sm font-medium text-orange-700">
+                      No se pudo guardar en backend. Se guardo localmente como respaldo.
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
