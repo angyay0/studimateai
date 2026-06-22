@@ -195,15 +195,6 @@ export default function DocumentPreview({ doc, onClose, onDelete, onRename }) {
                 <Sparkles className="w-4 h-4" />
                 Resumir
               </button>
-          {canSummarize && (
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowSummary(true)}
-                className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50 font-medium transition-colors text-sm"
-              >
-                <Sparkles className="w-4 h-4" />
-                Resumir
-              </button>
               {doc.status === 'indexed' && (
                 <Link
                   to="/quiz-mode"
