@@ -363,6 +363,27 @@ export const documentsAPI = {
     }
 
     return { success: true }
+  },
+
+  summarize: async (documentId) => {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}/summarize`, {
+      method: 'POST',
+      headers: {
+        ...authAPI.getAuthHeader()
+      }
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || data.message || 'No se pudo generar el resumen')
+    }
+
+    return {
+      documentId: data.documentId,
+      title: data.title,
+      summary: data.summary
+    }
   }
 }
 

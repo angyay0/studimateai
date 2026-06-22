@@ -391,4 +391,158 @@ NO incluyas texto adicional, solo el JSON.`;
 
     logger.info(`Guardadas ${questions.length} preguntas en la base de datos`);
   }
+
+  /**
+   * Genera un resumen estructurado y fiel de un texto.
+   *
+   * Para documentos largos usa una estrategia map-reduce: divide el texto en
+   * secciones, resume cada una (map) y luego combina los resúmenes parciales
+   * en un resumen final (reduce). Para documentos cortos resume en una pasada.
+   */
+  static async summarizeText(text: string): Promise<string> {
+    const cleanText = text.trim();
+    if (cleanText.length === 0) {
+      throw ApiError.badRequest('El documento no contiene texto para resumir');
+    }
+
+    // Tamaño máximo de cada fragmento (en caracteres) para mantenernos dentro
+    // de los límites de tokens del modelo.
+    const CHUNK_SIZE = 12000;
+
+    // Documento corto: resumen en una sola pasada.
+    if (cleanText.length <= CHUNK_SIZE) {
+      return this.generateFinalSummary(cleanText, false);
+    }
+
+    // Documento largo: estrategia map-reduce.
+    const chunks = this.splitIntoChunks(cleanText, CHUNK_SIZE);
+    logger.info(`Resumiendo documento largo en ${chunks.length} secciones (map-reduce)`);
+
+    // MAP: resumir cada sección por separado.
+    const partialSummaries: string[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const partial = await this.summarizeChunk(chunks[i], i + 1, chunks.length);
+      partialSummaries.push(partial);
+    }
+
+    // REDUCE: combinar los resúmenes parciales en un resumen final.
+    const combined = partialSummaries.map((s, i) => `--- Sección ${i + 1} ---\n${s}`).join('\n\n');
+
+    return this.generateFinalSummary(combined, true);
+  }
+
+  /** Divide el texto en fragmentos respetando límites de párrafo cuando es posible. */
+  private static splitIntoChunks(text: string, chunkSize: number): string[] {
+    const chunks: string[] = [];
+    const paragraphs = text.split(/\n\n+/);
+    let current = '';
+
+    for (const paragraph of paragraphs) {
+      // Si un solo párrafo excede el tamaño, lo cortamos de forma dura.
+      if (paragraph.length > chunkSize) {
+        if (current.trim()) {
+          chunks.push(current.trim());
+          current = '';
+        }
+        for (let i = 0; i < paragraph.length; i += chunkSize) {
+          chunks.push(paragraph.slice(i, i + chunkSize));
+        }
+        continue;
+      }
+
+      if ((current + '\n\n' + paragraph).length > chunkSize) {
+        if (current.trim()) {
+          chunks.push(current.trim());
+        }
+        current = paragraph;
+      } else {
+        current = current ? `${current}\n\n${paragraph}` : paragraph;
+      }
+    }
+
+    if (current.trim()) {
+      chunks.push(current.trim());
+    }
+
+    return chunks;
+  }
+
+  /** MAP: resume una sección individual del documento. */
+  private static async summarizeChunk(
+    chunk: string,
+    index: number,
+    total: number
+  ): Promise<string> {
+    const client = this.getClient();
+
+    const completion = await client.chat.completions.create({
+      model: env.openaiRagModel,
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Eres un asistente que resume material de estudio. Resume ÚNICAMENTE con ' +
+            'información presente en el texto proporcionado. NO inventes datos, nombres, ' +
+            'cifras ni conclusiones que no aparezcan en el texto.',
+        },
+        {
+          role: 'user',
+          content:
+            `Resume de forma concisa los puntos clave de esta sección ` +
+            `(parte ${index} de ${total}) del documento. Conserva las definiciones, ` +
+            `datos y conceptos importantes:\n\n${chunk}`,
+        },
+      ],
+    });
+
+    return completion.choices[0]?.message?.content?.trim() ?? '';
+  }
+
+  /** REDUCE / pasada única: genera el resumen final estructurado y fiel. */
+  private static async generateFinalSummary(
+    content: string,
+    fromPartials: boolean
+  ): Promise<string> {
+    const client = this.getClient();
+
+    const sourceDescription = fromPartials
+      ? 'los siguientes resúmenes parciales de las secciones de un documento'
+      : 'el siguiente documento';
+
+    const completion = await client.chat.completions.create({
+      model: env.openaiRagModel,
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Eres un asistente que crea resúmenes de estudio claros y estructurados. ' +
+            'Usa ÚNICAMENTE la información proporcionada. NO agregues información, datos ' +
+            'ni conclusiones que no estén presentes en el texto. Responde en español.',
+        },
+        {
+          role: 'user',
+          content:
+            `A partir de ${sourceDescription}, crea un resumen final claro y bien ` +
+            `estructurado usando EXACTAMENTE este formato:\n\n` +
+            `## Resumen general\n(2 a 4 frases que describan de qué trata el documento)\n\n` +
+            `## Puntos clave\n- (punto importante 1)\n- (punto importante 2)\n- (añade los que sean necesarios)\n\n` +
+            `## Conclusión\n(1 o 2 frases de cierre)\n\n` +
+            `Reglas:\n` +
+            `- Escribe los títulos de sección tal cual ("## Resumen general", "## Puntos clave", "## Conclusión").\n` +
+            `- Usa "- " al inicio de cada viñeta.\n` +
+            `- No uses negritas ni otros símbolos de markdown dentro de las líneas.\n` +
+            `- Sé fiel al contenido: no inventes nada que no esté en el texto.\n\n` +
+            `Contenido:\n\n${content}`,
+        },
+      ],
+    });
+
+    const summary = completion.choices[0]?.message?.content?.trim();
+    if (!summary) {
+      throw ApiError.internal('No se pudo generar el resumen');
+    }
+    return summary;
+  }
 }

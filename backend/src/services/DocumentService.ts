@@ -293,4 +293,45 @@ export class DocumentService {
       throw error;
     }
   }
+
+  /**
+   * Genera un resumen estructurado y fiel del contenido de un documento.
+   * Soporta documentos largos mediante la estrategia map-reduce del servicio RAG.
+   */
+  static async summarizeDocument(
+    userId: string,
+    documentId: string
+  ): Promise<{ documentId: string; title: string; summary: string }> {
+    // 1. Verifica propiedad y obtiene el documento
+    const document = await this.getDocument(userId, documentId);
+
+    if (!document.storageKey) {
+      throw ApiError.badRequest('El documento no tiene un archivo asociado.');
+    }
+
+    // 2. Obtiene la ruta local del archivo (descarga de Spaces si es necesario)
+    const filePath = await StorageService.getFilePath(document.storageKey);
+
+    // 3. Extrae el texto del documento
+    const extraction = await TextExtractor.extractText(filePath, document.mimeType);
+
+    if (!extraction.hasText || extraction.text.trim().length === 0) {
+      throw ApiError.badRequest(
+        'No se pudo extraer texto del documento. Es posible que sea un PDF escaneado sin texto seleccionable.'
+      );
+    }
+
+    logger.info(
+      `Generando resumen del documento ${documentId} (${extraction.characterCount} caracteres)`
+    );
+
+    // 4. Genera el resumen (map-reduce para documentos largos)
+    const summary = await OpenAIRagService.summarizeText(extraction.text);
+
+    return {
+      documentId: document.id,
+      title: document.originalFilename,
+      summary,
+    };
+  }
 }

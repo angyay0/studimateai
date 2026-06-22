@@ -127,4 +127,19 @@ router.delete(
   })
 );
 
+/**
+ * POST /api/documents/:id/summarize — Generar un resumen del documento (verifica propiedad).
+ * Usa IA (OpenAI) con estrategia map-reduce para soportar documentos largos.
+ */
+router.post(
+  '/:id/summarize',
+  authMiddleware,
+  param('id').isUUID().withMessage('El id del documento debe ser un UUID válido'),
+  validate,
+  asyncHandler(async (req, res) => {
+    const result = await DocumentService.summarizeDocument(req.user!.id, req.params.id);
+    res.json({ success: true, ...result });
+  })
+);
+
 export default router;
