@@ -166,6 +166,13 @@ export const env = Object.freeze({
   uploadDir: getString('UPLOAD_DIR', 'uploads'),
   storageProvider: getString('STORAGE_PROVIDER', 'local'),
   storageBucket: getString('STORAGE_BUCKET', ''),
+
+  // DigitalOcean Spaces / S3
+  spacesAccessKey: getString('SPACES_ACCESS_KEY', ''),
+  spacesSecretKey: getString('SPACES_SECRET_KEY', ''),
+  spacesEndpoint: getString('SPACES_ENDPOINT', ''),
+  spacesRegion: getString('SPACES_REGION', 'nyc3'),
+  spacesBucket: getString('SPACES_BUCKET', ''),
 });
 
 export type Env = typeof env;

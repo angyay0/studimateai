@@ -92,7 +92,9 @@ export class DocumentService {
         [storageKey, documentId]
       );
 
-      const textResult = await TextExtractor.extractText(storageKey, file.mimetype);
+      // Obtener la ruta del archivo (descarga desde Spaces si es necesario)
+      const filePath = await StorageService.getFilePath(storageKey);
+      const textResult = await TextExtractor.extractText(filePath, file.mimetype);
 
       if (!textResult.hasText) {
         await this.updateDocumentStatus(
