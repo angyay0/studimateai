@@ -13,7 +13,7 @@ import {
   FileText
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
-import { quizzesAPI } from '../services/api'
+import { documentsAPI, quizzesAPI } from '../services/api'
 
 const attemptsStorageKey = 'studimate.examAttempts'
 
@@ -29,73 +29,6 @@ const initialExamConfig = {
   durationMinutes: 30,
   difficulty: ''
 }
-
-const questionBank = [
-  {
-    topic: 'Biologia celular',
-    difficulty: 'Easy',
-    question: 'Que organelo produce la mayor parte de la energia celular?',
-    options: ['Nucleo', 'Mitocondria', 'Ribosoma', 'Lisosoma'],
-    correctAnswer: 'Mitocondria',
-    explanation: 'La mitocondria genera ATP mediante respiracion celular, por eso se asocia con la energia de la celula.'
-  },
-  {
-    topic: 'Quimica organica',
-    difficulty: 'Medium',
-    question: 'Que tipo de enlace comparte pares de electrones entre atomos?',
-    options: ['Ionico', 'Covalente', 'Metalico', 'Puente de hidrogeno'],
-    correctAnswer: 'Covalente',
-    explanation: 'En un enlace covalente los atomos comparten electrones para completar sus capas de valencia.'
-  },
-  {
-    topic: 'Historia mundial',
-    difficulty: 'Medium',
-    question: 'Que evento detono directamente el inicio de la Primera Guerra Mundial?',
-    options: ['Tratado de Versalles', 'Revolucion rusa', 'Asesinato del archiduque Francisco Fernando', 'Caida de Berlin'],
-    correctAnswer: 'Asesinato del archiduque Francisco Fernando',
-    explanation: 'El asesinato en Sarajevo activo alianzas militares europeas y precipito el conflicto.'
-  },
-  {
-    topic: 'Fisica',
-    difficulty: 'Hard',
-    question: 'Si una fuerza neta actua sobre un objeto, que cambia necesariamente?',
-    options: ['Su masa', 'Su aceleracion', 'Su volumen', 'Su temperatura'],
-    correctAnswer: 'Su aceleracion',
-    explanation: 'Por la segunda ley de Newton, una fuerza neta produce aceleracion proporcional a F/m.'
-  },
-  {
-    topic: 'Matematicas',
-    difficulty: 'Easy',
-    question: 'Cual es el resultado de 12 x 8?',
-    options: ['88', '92', '96', '108'],
-    correctAnswer: '96',
-    explanation: 'Multiplicar 12 por 8 equivale a 10 x 8 mas 2 x 8, que suma 96.'
-  },
-  {
-    topic: 'Comprension lectora',
-    difficulty: 'Medium',
-    question: 'Que identifica mejor la idea principal de un texto?',
-    options: ['Un dato aislado', 'El mensaje central', 'Una cita secundaria', 'La primera palabra'],
-    correctAnswer: 'El mensaje central',
-    explanation: 'La idea principal resume el punto mas importante que organiza el resto del texto.'
-  },
-  {
-    topic: 'Programacion',
-    difficulty: 'Hard',
-    question: 'Que estructura permite busquedas promedio O(1) por clave?',
-    options: ['Array ordenado', 'Lista enlazada', 'Tabla hash', 'Pila'],
-    correctAnswer: 'Tabla hash',
-    explanation: 'Una tabla hash calcula una posicion a partir de la clave, lo que permite acceso promedio constante.'
-  },
-  {
-    topic: 'Metodos de estudio',
-    difficulty: 'Easy',
-    question: 'Que tecnica mejora la retencion al espaciar sesiones de repaso?',
-    options: ['Lectura pasiva', 'Repeticion espaciada', 'Subrayar todo', 'Estudiar solo una vez'],
-    correctAnswer: 'Repeticion espaciada',
-    explanation: 'La repeticion espaciada fortalece la memoria al recuperar informacion en intervalos crecientes.'
-  }
-]
 
 const formatTime = (totalSeconds) => {
   const minutes = Math.floor(totalSeconds / 60)
@@ -126,24 +59,27 @@ const saveStoredAttempt = (attempt) => {
   return attempts
 }
 
-const generatePracticeQuestions = (config) => {
-  const filteredBank = config.difficulty
-    ? questionBank.filter((question) => question.difficulty === config.difficulty)
-    : questionBank
-  const source = filteredBank.length > 0 ? filteredBank : questionBank
+const mergeAttempts = (backendAttempts, localAttempts) => {
+  const seen = new Set()
 
-  return Array.from({ length: config.questionCount }, (_, index) => {
-    const question = source[index % source.length]
+  return [...backendAttempts, ...localAttempts]
+    .filter((attempt) => {
+      const key = attempt.id || `${attempt.submittedAt}-${attempt.score}-${attempt.totalQuestions}-${attempt.correctAnswers}`
 
-    return {
-      ...question,
-      id: index + 1
-    }
-  })
+      if (seen.has(key)) {
+        return false
+      }
+
+      seen.add(key)
+      return true
+    })
+    .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
 }
 
 function QuizMode({ onLogout }) {
   const [quizzes, setQuizzes] = useState([])
+  const [documents, setDocuments] = useState([])
+  const [selectedDocId, setSelectedDocId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [examConfig, setExamConfig] = useState(initialExamConfig)
   const [configSaved, setConfigSaved] = useState(false)
@@ -153,11 +89,58 @@ function QuizMode({ onLogout }) {
   const [result, setResult] = useState(null)
   const [recentAttempts, setRecentAttempts] = useState([])
   const [attemptSaveStatus, setAttemptSaveStatus] = useState(null)
+  const [examError, setExamError] = useState(null)
+  const [generatingExam, setGeneratingExam] = useState(false)
+
+  const loadQuizzes = useCallback(async () => {
+    try {
+      const data = await quizzesAPI.getUpcoming()
+      setQuizzes(data)
+    } catch (error) {
+      console.error('Error loading quizzes:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const loadDocuments = useCallback(async () => {
+    try {
+      const docs = await documentsAPI.getAll()
+      setDocuments(docs)
+
+      setSelectedDocId((currentSelectedId) => {
+        if (currentSelectedId && docs.some((doc) => doc.id === currentSelectedId && doc.status === 'indexed')) {
+          return currentSelectedId
+        }
+
+        const indexedDoc = docs.find((doc) => doc.status === 'indexed')
+        return indexedDoc?.id || docs[0]?.id || null
+      })
+
+      return docs
+    } catch (error) {
+      console.error('Error loading documents:', error)
+      setDocuments([])
+      setSelectedDocId(null)
+      return []
+    }
+  }, [])
+
+  const loadAttempts = useCallback(async () => {
+    try {
+      const backendAttempts = await quizzesAPI.getAttempts()
+      setRecentAttempts(mergeAttempts(backendAttempts, getStoredAttempts()))
+    } catch (error) {
+      console.error('Error loading exam attempts:', error)
+      setRecentAttempts(getStoredAttempts())
+    }
+  }, [])
 
   useEffect(() => {
     loadQuizzes()
+    loadDocuments()
     loadAttempts()
-  }, [])
+  }, [loadQuizzes, loadDocuments, loadAttempts])
 
   useEffect(() => {
     if (!activeExam || result || remainingSeconds <= 0) {
@@ -244,27 +227,6 @@ function QuizMode({ onLogout }) {
     }
   }, [activeExam, handleSubmitExam, remainingSeconds, result])
 
-  const loadQuizzes = async () => {
-    try {
-      const data = await quizzesAPI.getUpcoming()
-      setQuizzes(data)
-    } catch (error) {
-      console.error('Error loading quizzes:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadAttempts = async () => {
-    try {
-      const attempts = await quizzesAPI.getAttempts()
-      setRecentAttempts(attempts)
-    } catch (error) {
-      console.error('Error loading exam attempts:', error)
-      setRecentAttempts(getStoredAttempts())
-    }
-  }
-
   const getDifficultyColor = (difficulty) => {
     switch (difficulty) {
       case 'Easy':
@@ -303,26 +265,61 @@ function QuizMode({ onLogout }) {
     saveExamConfig()
   }
 
-  const handleStartExam = () => {
-    const preparedConfig = saveExamConfig()
-    const questions = generatePracticeQuestions(preparedConfig)
+  const handleStartExam = async () => {
+    setExamError(null)
 
-    setActiveExam({
-      ...preparedConfig,
-      id: `exam-${Date.now()}`,
-      questions,
-      startedAt: new Date().toISOString()
-    })
-    setRemainingSeconds(preparedConfig.durationMinutes * 60)
-    setAnswers({})
-    setResult(null)
-    setAttemptSaveStatus(null)
+    const selectedDoc = documents.find((doc) => doc.id === selectedDocId)
+
+    if (!selectedDoc) {
+      setExamError('Selecciona un documento indexado para generar el examen.')
+      return
+    }
+
+    if (selectedDoc.status !== 'indexed') {
+      setExamError('El documento seleccionado todavía no está indexado.')
+      return
+    }
+
+    const preparedConfig = saveExamConfig()
+
+    setGeneratingExam(true)
+    try {
+      const generatedExam = await quizzesAPI.generate(selectedDoc.id, preparedConfig)
+      const questions = generatedExam.questions.map((question, index) => ({
+        id: index + 1,
+        topic: selectedDoc.title || selectedDoc.originalFilename || 'Documento subido',
+        question: question.question,
+        options: question.options || [],
+        correctAnswer: question.correctAnswer,
+        explanation: question.explanation,
+        difficulty: question.difficulty || preparedConfig.difficulty || 'medium'
+      }))
+
+      setActiveExam({
+        ...preparedConfig,
+        id: generatedExam.id,
+        sourceDocumentId: selectedDoc.id,
+        sourceDocumentTitle: selectedDoc.title || selectedDoc.originalFilename,
+        questions,
+        startedAt: new Date().toISOString()
+      })
+      setRemainingSeconds(preparedConfig.durationMinutes * 60)
+      setAnswers({})
+      setResult(null)
+      setAttemptSaveStatus(null)
+    } catch (error) {
+      console.error('Error generating exam:', error)
+      setExamError(error.message || 'No se pudo generar el examen.')
+    } finally {
+      setGeneratingExam(false)
+    }
   }
 
   const handleResetExam = () => {
     setActiveExam(null)
     setRemainingSeconds(0)
     setAnswers({})
+    setExamError(null)
   }
 
   const handleAnswerQuestion = (questionId, option) => {
@@ -356,6 +353,14 @@ function QuizMode({ onLogout }) {
             </div>
             <p className="text-gray-600">Practice with AI-generated quizzes and track your progress</p>
           </div>
+
+          {examError && (
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+              <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+              <span className="text-sm">{examError}</span>
+              <button className="ml-auto text-red-400 hover:text-red-600" onClick={() => setExamError(null)}>✕</button>
+            </div>
+          )}
 
           {result && (
             <div className="card mb-8 border-green-200">
@@ -450,6 +455,11 @@ function QuizMode({ onLogout }) {
                     {activeExam.questionCount} reactivos configurados
                     {activeExam.difficulty ? ` | dificultad ${activeExam.difficulty}` : ' | sin dificultad fija'}
                   </p>
+                  {activeExam.sourceDocumentTitle && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      Documento fuente: {activeExam.sourceDocumentTitle}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -602,9 +612,9 @@ function QuizMode({ onLogout }) {
                     Guardar configuracion
                     <ChevronRight className="w-4 h-4" />
                   </button>
-                  <button type="button" onClick={handleStartExam} className="btn-secondary">
+                  <button type="button" onClick={handleStartExam} className="btn-secondary" disabled={generatingExam}>
                     <PlayCircle className="w-4 h-4" />
-                    Iniciar examen
+                    {generatingExam ? 'Generando examen...' : 'Iniciar examen'}
                   </button>
                   {configSaved && (
                     <p className="text-sm font-medium text-green-700">
@@ -615,6 +625,48 @@ function QuizMode({ onLogout }) {
               </form>
             </div>
           )}
+
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Documentos disponibles</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {documents.length === 0 ? (
+                <div className="card">
+                  <p className="text-sm text-gray-600">No hay documentos subidos.</p>
+                </div>
+              ) : (
+                documents.map((doc) => (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onClick={() => setSelectedDocId(doc.id)}
+                    className={`card text-left transition-colors ${
+                      selectedDocId === doc.id ? 'border-primary-400 bg-primary-50' : 'hover:border-primary-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{doc.title}</h3>
+                        <p className="text-sm text-gray-500">{doc.originalFilename}</p>
+                        <p className="mt-1 text-xs text-gray-500">{doc.status}</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        doc.status === 'indexed'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-orange-100 text-orange-700'
+                      }`}>
+                        {doc.status}
+                      </span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+            {documents.length > 0 && !documents.some((doc) => doc.id === selectedDocId && doc.status === 'indexed') && (
+              <p className="mt-3 text-sm text-orange-700">
+                Selecciona un documento indexado para poder generar el examen.
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="stat-card bg-gradient-to-br from-purple-50 to-white border-purple-100">

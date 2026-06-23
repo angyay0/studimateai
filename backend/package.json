@@ -18,6 +18,8 @@
     "db:migrate": "node scripts/run-migrations.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1073.0",
+    "@aws-sdk/lib-storage": "^3.1073.0",
     "axios": "^1.6.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -54,6 +56,6 @@
     "typescript": "^5.2.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

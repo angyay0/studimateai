@@ -3,6 +3,7 @@ import { openAiConfig, env } from '../config';
 import { query } from '../config/database';
 import { logger } from '../utils/logger';
 import { ApiError } from '../utils/ApiError';
+import { StorageService } from './StorageService';
 import fs from 'fs';
 
 interface VectorStore {
@@ -103,7 +104,10 @@ export class OpenAIRagService {
 
     logger.info(`Subiendo archivo a OpenAI Files API: ${file.originalname}`);
 
-    const fileStream = fs.createReadStream(storageKey);
+    // Obtener la ruta del archivo (descarga desde Spaces si es necesario)
+    const filePath = await StorageService.getFilePath(storageKey);
+    const fileStream = fs.createReadStream(filePath);
+    
     const uploadedFile = await client.files.create({
       file: fileStream,
       purpose: 'assistants',
