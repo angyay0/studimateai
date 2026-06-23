@@ -78,6 +78,7 @@ export default function SummaryModal({ doc, onClose }) {
   const [summary, setSummary] = useState('');
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
 
   // Pide el resumen al abrir el modal
   useEffect(() => {
@@ -111,13 +112,42 @@ export default function SummaryModal({ doc, onClose }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
+  // Copia texto al portapapeles con fallback para contextos no seguros (HTTP)
+  // o navegadores que no exponen navigator.clipboard (común en Codespaces con
+  // puertos reenviados). Si el método moderno no está disponible, usa un
+  // <textarea> temporal con document.execCommand('copy').
+  const copyToClipboard = async (text) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.setAttribute('readonly', '');
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      const ok = document.execCommand('copy');
+      if (!ok) throw new Error("execCommand('copy') devolvió false");
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  };
+
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(summary);
+      await copyToClipboard(summary);
+      setCopyError(false);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError('No se pudo copiar al portapapeles');
+      // No tocamos el estado `error` para no ocultar el resumen ya generado.
+      setCopied(false);
+      setCopyError(true);
+      setTimeout(() => setCopyError(false), 3000);
     }
   };
 
@@ -195,8 +225,14 @@ export default function SummaryModal({ doc, onClose }) {
               onClick={handleCopy}
               className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 font-medium transition-colors text-sm"
             >
-              {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copiado' : 'Copiar'}
+              {copied ? (
+                <Check className="w-4 h-4 text-green-600" />
+              ) : copyError ? (
+                <AlertCircle className="w-4 h-4 text-red-500" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              {copied ? 'Copiado' : copyError ? 'No se pudo copiar' : 'Copiar'}
             </button>
             <button onClick={handleDownload} className="btn-primary flex-1 justify-center">
               <Download className="w-4 h-4" />
