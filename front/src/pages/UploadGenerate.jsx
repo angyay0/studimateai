@@ -19,15 +19,24 @@ function UploadGenerate({ onLogout }) {
     focusTopic: ''
   })
 
-  const loadDocuments = useCallback(async () => {
+  const loadDocuments = useCallback(async (preferredDocId = null) => {
     try {
       const docs = await documentsAPI.getAll()
       setDocuments(docs)
+      if (preferredDocId) {
+        const preferredDoc = docs.find((doc) => doc.id === preferredDocId)
+        if (preferredDoc) {
+          setSelectedDoc(preferredDoc)
+          return docs
+        }
+      }
       if (docs.length > 0 && !selectedDoc) {
         setSelectedDoc(docs[0])
       }
+      return docs
     } catch (error) {
       console.error('Error loading documents:', error)
+      return []
     }
   }, [selectedDoc])
 
@@ -80,8 +89,7 @@ function UploadGenerate({ onLogout }) {
       const newDoc = await documentsAPI.upload(file, (percent) => {
         setUploadProgress(percent)
       })
-      setDocuments((prev) => [newDoc, ...prev])
-      setSelectedDoc(newDoc)
+      await loadDocuments(newDoc.id)
       setUploadSuccess(`"${newDoc.originalName ?? file.name}" subido correctamente.`)
       setUploadProgress(100)
     } catch (error) {
@@ -114,7 +122,22 @@ function UploadGenerate({ onLogout }) {
 
     setGenerating(true)
     try {
-      const quiz = await quizzesAPI.generate(selectedDoc.id, quizConfig)
+      const docs = await loadDocuments(selectedDoc.id)
+      const refreshedDoc = docs.find((doc) => doc.id === selectedDoc.id)
+
+      if (!refreshedDoc) {
+        setUploadError('El documento seleccionado ya no está disponible.')
+        return
+      }
+
+      if (refreshedDoc.status !== 'indexed') {
+        setUploadError('Este documento aún se está indexando. Espera a que termine el procesamiento antes de generar el examen.')
+        setSelectedDoc(refreshedDoc)
+        return
+      }
+
+      setSelectedDoc(refreshedDoc)
+      const quiz = await quizzesAPI.generate(refreshedDoc.id, quizConfig)
       alert(`¡Quiz generado con ${quiz.questions.length} preguntas!`)
     } catch (error) {
       console.error('Error generating quiz:', error)
@@ -273,11 +296,21 @@ function UploadGenerate({ onLogout }) {
                       <h2 className="text-2xl font-bold text-gray-900 mb-1">{selectedDoc.originalName ?? selectedDoc.title}</h2>
                       <p className="text-gray-600">{selectedDoc.pageCount ? `${selectedDoc.pageCount} páginas · ` : ''}Configura tu quiz</p>
                     </div>
-                    <button className="btn-primary" onClick={handleGenerateQuiz} disabled={generating}>
+                    <button
+                      className="btn-primary"
+                      onClick={handleGenerateQuiz}
+                      disabled={generating || selectedDoc.status !== 'indexed'}
+                    >
                       <Sparkles className="w-5 h-5" />
-                      {generating ? 'Generando...' : 'Generar Quiz'}
+                      {generating ? 'Generando...' : selectedDoc.status !== 'indexed' ? 'Esperando indexación' : 'Generar Quiz'}
                     </button>
                   </div>
+
+                  {selectedDoc.status !== 'indexed' && (
+                    <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+                      El documento está en estado <strong>{selectedDoc.status}</strong>. Espera a que termine de indexarse para generar el examen.
+                    </div>
+                  )}
 
                   <div className="bg-purple-50 rounded-xl p-6 mb-8">
                     <div className="flex items-center gap-2 mb-4">

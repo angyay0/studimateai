@@ -137,10 +137,19 @@ export class OpenAIRagService {
     if (documentIds && documentIds.length > 0) {
       const docsResult = await query(
         `SELECT openai_file_id FROM documents 
-         WHERE id = ANY($1) AND user_id = $2 AND openai_file_id IS NOT NULL`,
+         WHERE id = ANY($1)
+           AND user_id = $2
+           AND status = 'indexed'
+           AND openai_file_id IS NOT NULL`,
         [documentIds, userId]
       );
       fileIds = docsResult.rows.map((row: any) => row.openai_file_id);
+
+      if (fileIds.length === 0) {
+        throw ApiError.badRequest(
+          'El documento seleccionado todavía no está indexado. Espera a que termine el procesamiento antes de generar el examen.'
+        );
+      }
     } else {
       const docsResult = await query(
         `SELECT openai_file_id FROM documents 
