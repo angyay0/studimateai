@@ -284,7 +284,10 @@ function QuizMode({ onLogout }) {
 
     setGeneratingExam(true)
     try {
-      const generatedExam = await quizzesAPI.generate(selectedDoc.id, preparedConfig)
+      const generatedExam = await quizzesAPI.generate(undefined, {
+        ...preparedConfig,
+        documentIds: [selectedDoc.id]
+      })
       const questions = generatedExam.questions.map((question, index) => ({
         id: index + 1,
         topic: selectedDoc.title || selectedDoc.originalFilename || 'Documento subido',

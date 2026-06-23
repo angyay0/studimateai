@@ -394,7 +394,7 @@ export const quizzesAPI = {
         ...authAPI.getAuthHeader()
       },
       body: JSON.stringify({
-        documentIds: documentId ? [documentId] : undefined,
+        documentIds: config.documentIds || (documentId ? [documentId] : undefined),
         questionCount: config.questionCount || 20,
         difficulty: difficultyMap[config.difficulty] || 'medium',
         questionTypes: config.questionTypes?.map(t => typeMap[t] || 'multiple_choice'),

@@ -30,8 +30,9 @@ function UploadGenerate({ onLogout }) {
           return docs
         }
       }
-      if (docs.length > 0 && !selectedDoc) {
-        setSelectedDoc(docs[0])
+      if (!selectedDoc) {
+        const indexedDoc = docs.find((doc) => doc.status === 'indexed')
+        setSelectedDoc(indexedDoc || docs[0] || null)
       }
       return docs
     } catch (error) {
