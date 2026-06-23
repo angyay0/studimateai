@@ -7,6 +7,9 @@ import UploadGenerate from './pages/UploadGenerate'
 import Documents from './pages/Documents'
 import QuizMode from './pages/QuizMode'
 import Progress from './pages/Progress'
+import Flashcards from './pages/Flashcards'
+import FlashcardReview from './pages/FlashcardReview'
+import TakeQuiz from './pages/TakeQuiz'
 import { authAPI } from './services/api'
 
 const idleTimeoutMs = 45 * 60 * 1000
@@ -111,9 +114,27 @@ function App() {
           } 
         />
         <Route 
+          path="/quiz/take" 
+          element={
+            isAuthenticated ? <TakeQuiz onLogout={handleLogout} /> : <Navigate to="/login" />
+          } 
+        />
+        <Route 
           path="/progress" 
           element={
             isAuthenticated ? <Progress onLogout={handleLogout} /> : <Navigate to="/login" />
+          } 
+        />
+        <Route 
+          path="/flashcards" 
+          element={
+            isAuthenticated ? <Flashcards onLogout={handleLogout} /> : <Navigate to="/login" />
+          } 
+        />
+        <Route 
+          path="/flashcards/review" 
+          element={
+            isAuthenticated ? <FlashcardReview onLogout={handleLogout} /> : <Navigate to="/login" />
           } 
         />
       </Routes>

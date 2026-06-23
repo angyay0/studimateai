@@ -11,6 +11,7 @@ import chatRoutes from './chat.routes';
 import quizRoutes from './quizzes.routes';
 import ragRoutes from './rag.routes';
 import examsRoutes from './exams.routes';
+import flashcardsRoutes from './flashcards.routes';
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use('/chat', chatRoutes);
 router.use('/quizzes', quizRoutes);
 router.use('/rag', ragRoutes);
 router.use('/exams', examsRoutes);
+router.use('/flashcards', flashcardsRoutes);
 
 export default router;

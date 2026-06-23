@@ -1,5 +1,5 @@
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5005'
 
 const getStorage = () => (
   localStorage.getItem('rememberMe') === 'true' ? localStorage : sessionStorage
@@ -31,68 +31,98 @@ const clearAuthSession = () => {
   sessionStorage.removeItem('user')
 }
 
-const parseDate = (value) => {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
-const startOfDay = (date) => {
-  const result = new Date(date)
-  result.setHours(0, 0, 0, 0)
-  return result
-}
-
-const sum = (values) => values.reduce((total, value) => total + value, 0)
-
-const average = (values) => values.length ? sum(values) / values.length : 0
-
-const getDocumentLabel = (attempt) => {
-  const sourceTitle = attempt?.config?.sourceDocumentTitle
-  const sourceId = attempt?.config?.sourceDocumentId
-  return sourceTitle || sourceId || 'Documento'
-}
-
-const buildDashboardStats = (documents, attempts) => {
-  const attemptScores = attempts.map((attempt) => Number(attempt.score) || 0)
-  const currentWeekStart = startOfDay(new Date())
-  currentWeekStart.setDate(currentWeekStart.getDate() - 6)
-  const previousWeekStart = new Date(currentWeekStart)
-  previousWeekStart.setDate(previousWeekStart.getDate() - 7)
-  const currentWeekEnd = new Date(currentWeekStart)
-  currentWeekEnd.setDate(currentWeekEnd.getDate() + 7)
-
-  const currentWeekAttempts = attempts.filter((attempt) => {
-    const submitted = parseDate(attempt.submittedAt)
-    return submitted && submitted >= currentWeekStart && submitted < currentWeekEnd
-  })
-
-  const previousWeekAttempts = attempts.filter((attempt) => {
-    const submitted = parseDate(attempt.submittedAt)
-    return submitted && submitted >= previousWeekStart && submitted < currentWeekStart
-  })
-
-  const currentWeekScores = currentWeekAttempts.map((attempt) => Number(attempt.score) || 0)
-  const previousWeekScores = previousWeekAttempts.map((attempt) => Number(attempt.score) || 0)
-
-  const currentWeekHours = sum(currentWeekAttempts.map((attempt) => Number(attempt.timeTakenSeconds) || 0)) / 3600
-  const totalHours = sum(attempts.map((attempt) => Number(attempt.timeTakenSeconds) || 0)) / 3600
-  const totalQuizzes = attempts.length
-  const topicsMastered = new Set(attempts.map((attempt) => getDocumentLabel(attempt))).size
-
-  const weeklyDelta = currentWeekAttempts.length - previousWeekAttempts.length
-  const scoreDelta = average(currentWeekScores) - average(previousWeekScores)
-
-  return {
-    quizzesTaken: totalQuizzes,
-    quizzesChange: weeklyDelta >= 0 ? `+${weeklyDelta} this week` : `${weeklyDelta} this week`,
-    avgScore: Math.round(average(attemptScores)),
-    scoreChange: `${scoreDelta >= 0 ? '+' : ''}${scoreDelta.toFixed(0)}% from last week`,
-    hoursStudied: Number(totalHours.toFixed(1)),
-    hoursChange: currentWeekHours > 0 ? `${currentWeekHours.toFixed(1)}h this week` : 'No recent activity',
-    topicsMastered,
-    topicsChange: topicsMastered > 0 ? `${topicsMastered} documents practiced` : 'No documents yet'
+// Helper for making authenticated API calls
+const api = {
+  get: async (endpoint, options = {}) => {
+    const url = endpoint.startsWith('/api') ? `${API_URL}${endpoint}` : `${API_URL}/api${endpoint}`
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getAuthToken() ? { 'Authorization': `Bearer ${getAuthToken()}` } : {}),
+        ...options.headers
+      },
+      ...options
+    })
+    
+    const data = await response.json()
+    
+    if (!response.ok) {
+      throw new Error(data.error || data.message || 'Request failed')
+    }
+    
+    return { data, status: response.status }
+  },
+  
+  post: async (endpoint, body, options = {}) => {
+    const url = endpoint.startsWith('/api') ? `${API_URL}${endpoint}` : `${API_URL}/api${endpoint}`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getAuthToken() ? { 'Authorization': `Bearer ${getAuthToken()}` } : {}),
+        ...options.headers
+      },
+      body: JSON.stringify(body),
+      ...options
+    })
+    
+    const data = await response.json()
+    
+    if (!response.ok) {
+      throw new Error(data.error || data.message || 'Request failed')
+    }
+    
+    return { data, status: response.status }
+  },
+  
+  delete: async (endpoint, options = {}) => {
+    const url = endpoint.startsWith('/api') ? `${API_URL}${endpoint}` : `${API_URL}/api${endpoint}`
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getAuthToken() ? { 'Authorization': `Bearer ${getAuthToken()}` } : {}),
+        ...options.headers
+      },
+      ...options
+    })
+    
+    const data = await response.json()
+    
+    if (!response.ok) {
+      throw new Error(data.error || data.message || 'Request failed')
+    }
+    
+    return { data, status: response.status }
   }
 }
+
+const mockDocuments = [
+  {
+    id: 1,
+    title: 'Cell Biology Chapter 4-6',
+    pages: 48,
+    quizzes: 3,
+    uploadedAt: '2h ago',
+    icon: '🧬'
+  },
+  {
+    id: 2,
+    title: 'Organic Chemistry Textbook',
+    pages: 92,
+    quizzes: 5,
+    uploadedAt: 'Yesterday',
+    icon: '🧪'
+  },
+  {
+    id: 3,
+    title: 'World History: WWI',
+    pages: 34,
+    quizzes: 2,
+    uploadedAt: '3 days ago',
+    icon: '📖'
+  }];
 
 const buildProgressData = (attempts) => {
   const sortedAttempts = [...attempts]
@@ -320,13 +350,8 @@ export const documentsAPI = {
     }
 
     return data.documents.map(doc => ({
-      id: doc.id,
+      ...doc, // Preserve all original fields
       title: doc.originalFilename.replace(/\.(pdf|txt|md|docx)$/i, ''),
-      originalFilename: doc.originalFilename,
-      mimeType: doc.mimeType,
-      sizeBytes: doc.sizeBytes,
-      status: doc.status,
-      errorMessage: doc.errorMessage,
       uploadedAt: new Date(doc.createdAt).toLocaleString(),
       icon: doc.mimeType === 'application/pdf' ? '📄' : '📝',
       pages: null
@@ -460,8 +485,42 @@ export const documentsAPI = {
 }
 
 export const quizzesAPI = {
-  getUpcoming: async () => {
-    return []
+  getUpcoming: async (documentId = null) => {
+    const params = documentId ? `?documentId=${documentId}` : ''
+    const response = await api.get(`/exams${params}`)
+    
+    // Transform backend questions to quiz format
+    const questions = response.data.questions || []
+    
+    if (questions.length === 0) {
+      return []
+    }
+    
+    // Group questions by document (if available) or create a single quiz
+    const quizzes = [{
+      id: Date.now().toString(),
+      title: documentId ? 'Generated Quiz' : 'All Questions',
+      questionCount: questions.length,
+      duration: questions.length * 2, // 2 minutes per question
+      difficulty: questions[0]?.difficulty || 'medium',
+      topic: 'Study Material',
+      questions: questions.map((q, index) => ({
+        id: index + 1,
+        question: q.questionText,
+        type: q.questionType,
+        options: q.options || [],
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation
+      }))
+    }]
+    
+    return quizzes
+  },
+
+  deleteAll: async (documentId = null) => {
+    const params = documentId ? `?documentId=${documentId}` : ''
+    const response = await api.delete(`/exams${params}`)
+    return response.data
   },
   
   generate: async (documentId, config) => {
@@ -579,5 +638,43 @@ export const statsAPI = {
   getProgress: async () => {
     const attempts = await quizzesAPI.getAttempts()
     return buildProgressData(attempts)
+  }
+}
+
+// Flashcards API
+export const flashcardsAPI = {
+  generate: async (documentId, config = {}) => {
+    const response = await api.post('/flashcards/generate', { 
+      documentId,
+      count: config.count || 10,
+      type: config.type || 'concept'
+    })
+    return response.data
+  },
+
+  getAll: async (documentId = null) => {
+    const params = documentId ? { documentId } : {}
+    const response = await api.get('/flashcards', { params })
+    return response.data.flashcards
+  },
+
+  getDue: async () => {
+    const response = await api.get('/flashcards/due')
+    return response.data.flashcards
+  },
+
+  getDueCount: async () => {
+    const response = await api.get('/flashcards/due/count')
+    return response.data.count
+  },
+
+  review: async (flashcardId, rating) => {
+    const response = await api.post(`/flashcards/${flashcardId}/review`, { rating })
+    return response.data.flashcard
+  },
+
+  deleteForDocument: async (documentId) => {
+    const response = await api.delete(`/flashcards/document/${documentId}`)
+    return response.data.deletedCount
   }
 }

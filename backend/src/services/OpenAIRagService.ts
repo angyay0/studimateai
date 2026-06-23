@@ -580,4 +580,116 @@ NO incluyas texto adicional, solo el JSON.`;
     }
     return summary;
   }
+
+  static async getGeneratedQuestions(params: {
+    userId: string;
+    documentId?: string;
+    courseId?: string;
+  }): Promise<GeneratedQuestion[]> {
+    const { userId, documentId, courseId } = params;
+
+    let queryText = `
+      SELECT 
+        id,
+        user_id as "userId",
+        course_id as "courseId",
+        document_id as "documentId",
+        question_text as "questionText",
+        question_type as "questionType",
+        options,
+        correct_answer as "correctAnswer",
+        explanation,
+        difficulty,
+        citations,
+        created_at as "createdAt"
+      FROM generated_questions
+      WHERE user_id = $1
+    `;
+
+    const queryParams: any[] = [userId];
+    let paramIndex = 2;
+
+    if (documentId) {
+      queryText += ` AND document_id = $${paramIndex}`;
+      queryParams.push(documentId);
+      paramIndex++;
+    }
+
+    if (courseId) {
+      queryText += ` AND course_id = $${paramIndex}`;
+      queryParams.push(courseId);
+      paramIndex++;
+    }
+
+    queryText += ` ORDER BY created_at DESC`;
+
+    const result = await query(queryText, queryParams);
+
+    return result.rows.map((row: any) => {
+      let options;
+      if (row.options) {
+        // PostgreSQL may return JSON columns as already-parsed objects or as strings
+        if (Array.isArray(row.options)) {
+          options = row.options;
+        } else if (typeof row.options === 'string') {
+          try {
+            options = JSON.parse(row.options);
+          } catch (e) {
+            // If not valid JSON, try to split by comma (legacy format)
+            options = row.options.split(',').map((opt: string) => opt.trim());
+          }
+        }
+      }
+
+      let citations;
+      if (row.citations) {
+        if (Array.isArray(row.citations)) {
+          citations = row.citations;
+        } else if (typeof row.citations === 'string') {
+          try {
+            citations = JSON.parse(row.citations);
+          } catch (e) {
+            citations = undefined;
+          }
+        }
+      }
+
+      return {
+        questionText: row.questionText,
+        questionType: row.questionType,
+        options,
+        correctAnswer: row.correctAnswer,
+        explanation: row.explanation,
+        difficulty: row.difficulty,
+        citations,
+      };
+    });
+  }
+
+  static async deleteGeneratedQuestions(params: {
+    userId: string;
+    documentId?: string;
+    courseId?: string;
+  }): Promise<number> {
+    const { userId, documentId, courseId } = params;
+
+    let queryText = 'DELETE FROM generated_questions WHERE user_id = $1';
+    const queryParams: any[] = [userId];
+    let paramIndex = 2;
+
+    if (documentId) {
+      queryText += ` AND document_id = $${paramIndex}`;
+      queryParams.push(documentId);
+      paramIndex++;
+    }
+
+    if (courseId) {
+      queryText += ` AND course_id = $${paramIndex}`;
+      queryParams.push(courseId);
+      paramIndex++;
+    }
+
+    const result = await query(queryText, queryParams);
+    return result.rowCount || 0;
+  }
 }
