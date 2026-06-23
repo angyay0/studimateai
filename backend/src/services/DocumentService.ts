@@ -105,34 +105,46 @@ export class DocumentService {
         return;
       }
 
-      await this.updateDocumentStatus(documentId, 'indexing');
+      // La indexación en OpenAI (RAG) es best-effort: si falla por falta de
+      // créditos, API key o red, el documento NO se queda atascado en 'indexing'
+      // ni se marca como 'failed'. Queda como 'uploaded' y se puede resumir igual,
+      // porque el resumen usa el texto extraído, no la indexación.
+      try {
+        await this.updateDocumentStatus(documentId, 'indexing');
 
-      const ragResult = await OpenAIRagService.uploadAndIndexDocument({
-        file,
-        userId,
-        courseId,
-        documentId,
-        storageKey,
-      });
-
-      await query(
-        `UPDATE documents 
-         SET openai_file_id = $1, 
-             openai_vector_store_id = $2,
-             openai_vector_store_file_id = $3,
-             status = $4,
-             updated_at = NOW()
-         WHERE id = $5`,
-        [
-          ragResult.openaiFileId,
-          ragResult.openaiVectorStoreId,
-          ragResult.openaiVectorStoreFileId,
-          'indexed',
+        const ragResult = await OpenAIRagService.uploadAndIndexDocument({
+          file,
+          userId,
+          courseId,
           documentId,
-        ]
-      );
+          storageKey,
+        });
 
-      logger.info(`Documento ${documentId} indexado correctamente`);
+        await query(
+          `UPDATE documents 
+           SET openai_file_id = $1, 
+               openai_vector_store_id = $2,
+               openai_vector_store_file_id = $3,
+               status = $4,
+               updated_at = NOW()
+           WHERE id = $5`,
+          [
+            ragResult.openaiFileId,
+            ragResult.openaiVectorStoreId,
+            ragResult.openaiVectorStoreFileId,
+            'indexed',
+            documentId,
+          ]
+        );
+
+        logger.info(`Documento ${documentId} indexado correctamente`);
+      } catch (indexError) {
+        logger.warn(
+          `No se pudo indexar el documento ${documentId} en OpenAI; queda como 'uploaded' y se podrá resumir igualmente:`,
+          indexError
+        );
+        await this.updateDocumentStatus(documentId, 'uploaded');
+      }
     } catch (error) {
       logger.error(`Error procesando documento ${documentId}:`, error);
       await this.updateDocumentStatus(

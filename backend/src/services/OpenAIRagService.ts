@@ -108,10 +108,16 @@ export class OpenAIRagService {
     const filePath = await StorageService.getFilePath(storageKey);
     const fileStream = fs.createReadStream(filePath);
     
-    const uploadedFile = await client.files.create({
-      file: fileStream,
-      purpose: 'assistants',
-    });
+    // Timeout de 60s y 1 reintento: si la llamada a OpenAI se cuelga (red, cuota),
+    // lanza un error en vez de quedarse esperando indefinidamente. Así el documento
+    // no se queda atascado en 'indexing'.
+    const uploadedFile = await client.files.create(
+      {
+        file: fileStream,
+        purpose: 'assistants',
+      },
+      { maxRetries: 1, timeout: 60_000 }
+    );
 
     logger.info(`Archivo subido a OpenAI: ${uploadedFile.id}`);
 
