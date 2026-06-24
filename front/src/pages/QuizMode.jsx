@@ -192,7 +192,9 @@ function QuizMode({ onLogout }) {
       config: {
         questionCount: exam.questionCount,
         durationMinutes: exam.durationMinutes,
-        difficulty: exam.difficulty
+        difficulty: exam.difficulty,
+        sourceDocumentId: exam.sourceDocumentId,
+        sourceDocumentTitle: exam.sourceDocumentTitle
       },
       questions: reviewedQuestions
     }

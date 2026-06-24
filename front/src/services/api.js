@@ -31,59 +31,131 @@ const clearAuthSession = () => {
   sessionStorage.removeItem('user')
 }
 
-const mockDocuments = [
-  {
-    id: 1,
-    title: 'Cell Biology Chapter 4-6',
-    pages: 48,
-    quizzes: 3,
-    uploadedAt: '2h ago',
-    icon: '🧬'
-  },
-  {
-    id: 2,
-    title: 'Organic Chemistry Textbook',
-    pages: 92,
-    quizzes: 5,
-    uploadedAt: 'Yesterday',
-    icon: '🧪'
-  },
-  {
-    id: 3,
-    title: 'World History: WWI',
-    pages: 34,
-    quizzes: 2,
-    uploadedAt: '3 days ago',
-    icon: '📖'
-  }
-]
+const parseDate = (value) => {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
 
-const mockQuizzes = [
-  {
-    id: 1,
-    title: 'Cell Biology — Mitosis',
-    time: 'Today, 4:00 PM',
-    difficulty: 'Medium',
-    subject: 'Cell Biology'
-  },
-  {
-    id: 2,
-    title: 'Organic Chemistry — Bonds',
-    time: 'Tomorrow, 10:00 AM',
-    difficulty: 'Hard',
-    subject: 'Organic Chemistry'
-  }
-]
+const startOfDay = (date) => {
+  const result = new Date(date)
+  result.setHours(0, 0, 0, 0)
+  return result
+}
 
-const mockStats = {
-  quizzesTaken: 47,
-  quizzesChange: '+3 this week',
-  avgScore: 83,
-  scoreChange: '+5% from last week',
-  hoursStudied: 38,
-  hoursChange: 'This month',
-  topicsMastered: 12,
-  topicsChange: '4 in progress'
+const sum = (values) => values.reduce((total, value) => total + value, 0)
+
+const average = (values) => values.length ? sum(values) / values.length : 0
+
+const getDocumentLabel = (attempt) => {
+  const sourceTitle = attempt?.config?.sourceDocumentTitle
+  const sourceId = attempt?.config?.sourceDocumentId
+  return sourceTitle || sourceId || 'Documento'
+}
+
+const buildDashboardStats = (documents, attempts) => {
+  const attemptScores = attempts.map((attempt) => Number(attempt.score) || 0)
+  const currentWeekStart = startOfDay(new Date())
+  currentWeekStart.setDate(currentWeekStart.getDate() - 6)
+  const previousWeekStart = new Date(currentWeekStart)
+  previousWeekStart.setDate(previousWeekStart.getDate() - 7)
+  const currentWeekEnd = new Date(currentWeekStart)
+  currentWeekEnd.setDate(currentWeekEnd.getDate() + 7)
+
+  const currentWeekAttempts = attempts.filter((attempt) => {
+    const submitted = parseDate(attempt.submittedAt)
+    return submitted && submitted >= currentWeekStart && submitted < currentWeekEnd
+  })
+
+  const previousWeekAttempts = attempts.filter((attempt) => {
+    const submitted = parseDate(attempt.submittedAt)
+    return submitted && submitted >= previousWeekStart && submitted < currentWeekStart
+  })
+
+  const currentWeekScores = currentWeekAttempts.map((attempt) => Number(attempt.score) || 0)
+  const previousWeekScores = previousWeekAttempts.map((attempt) => Number(attempt.score) || 0)
+
+  const currentWeekHours = sum(currentWeekAttempts.map((attempt) => Number(attempt.timeTakenSeconds) || 0)) / 3600
+  const totalHours = sum(attempts.map((attempt) => Number(attempt.timeTakenSeconds) || 0)) / 3600
+  const totalQuizzes = attempts.length
+  const topicsMastered = new Set(attempts.map((attempt) => getDocumentLabel(attempt))).size
+
+  const weeklyDelta = currentWeekAttempts.length - previousWeekAttempts.length
+  const scoreDelta = average(currentWeekScores) - average(previousWeekScores)
+
+  return {
+    quizzesTaken: totalQuizzes,
+    quizzesChange: weeklyDelta >= 0 ? `+${weeklyDelta} this week` : `${weeklyDelta} this week`,
+    avgScore: Math.round(average(attemptScores)),
+    scoreChange: `${scoreDelta >= 0 ? '+' : ''}${scoreDelta.toFixed(0)}% from last week`,
+    hoursStudied: Number(totalHours.toFixed(1)),
+    hoursChange: currentWeekHours > 0 ? `${currentWeekHours.toFixed(1)}h this week` : 'No recent activity',
+    topicsMastered,
+    topicsChange: topicsMastered > 0 ? `${topicsMastered} documents practiced` : 'No documents yet'
+  }
+}
+
+const buildProgressData = (attempts) => {
+  const sortedAttempts = [...attempts]
+    .sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt))
+
+  const weekBuckets = Array.from({ length: 7 }, () => [])
+  const today = startOfDay(new Date())
+
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const target = new Date(today)
+    target.setDate(target.getDate() - offset)
+    weekBuckets[6 - offset] = sortedAttempts.filter((attempt) => {
+      const submitted = parseDate(attempt.submittedAt)
+      return submitted && submitted.toDateString() === target.toDateString()
+    })
+  }
+
+  const weeklyScores = weekBuckets.map((bucket) => (
+    bucket.length > 0 ? Math.round(average(bucket.map((attempt) => Number(attempt.score) || 0))) : 0
+  ))
+
+  const masteryMap = new Map()
+  sortedAttempts.forEach((attempt) => {
+    const label = getDocumentLabel(attempt)
+    const current = masteryMap.get(label) || { scores: [], label }
+    current.scores.push(Number(attempt.score) || 0)
+    masteryMap.set(label, current)
+  })
+
+  const topicMastery = [...masteryMap.values()]
+    .map((entry) => ({
+      topic: entry.label,
+      mastery: Math.round(average(entry.scores))
+    }))
+    .sort((a, b) => b.mastery - a.mastery)
+    .slice(0, 4)
+
+  const activeDays = new Set(
+    sortedAttempts.map((attempt) => {
+      const submitted = parseDate(attempt.submittedAt)
+      return submitted ? submitted.toDateString() : null
+    }).filter(Boolean)
+  )
+
+  let studyStreak = 0
+  for (let offset = 0; offset < 365; offset += 1) {
+    const day = new Date(today)
+    day.setDate(day.getDate() - offset)
+    if (activeDays.has(day.toDateString())) {
+      studyStreak += 1
+    } else if (offset > 0) {
+      break
+    }
+  }
+
+  return {
+    weeklyScores,
+    topicMastery,
+    studyStreak,
+    overallScore: Math.round(average(sortedAttempts.map((attempt) => Number(attempt.score) || 0))),
+    attemptCount: sortedAttempts.length,
+    documentsPracticed: masteryMap.size
+  }
 }
 
 export const authAPI = {
@@ -368,8 +440,7 @@ export const documentsAPI = {
 
 export const quizzesAPI = {
   getUpcoming: async () => {
-    await delay(500)
-    return mockQuizzes
+    return []
   },
   
   generate: async (documentId, config) => {
@@ -476,22 +547,16 @@ export const quizzesAPI = {
 
 export const statsAPI = {
   getDashboard: async () => {
-    await delay(500)
-    return mockStats
+    const [documents, attempts] = await Promise.all([
+      documentsAPI.getAll(),
+      quizzesAPI.getAttempts()
+    ])
+
+    return buildDashboardStats(documents, attempts)
   },
   
   getProgress: async () => {
-    await delay(500)
-    
-    return {
-      weeklyScores: [75, 78, 82, 85, 83, 88, 90],
-      topicMastery: [
-        { topic: 'Cell Biology', mastery: 85 },
-        { topic: 'Organic Chemistry', mastery: 72 },
-        { topic: 'World History', mastery: 68 },
-        { topic: 'Physics', mastery: 55 }
-      ],
-      studyStreak: 14
-    }
+    const attempts = await quizzesAPI.getAttempts()
+    return buildProgressData(attempts)
   }
 }
