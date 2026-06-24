@@ -105,34 +105,46 @@ export class DocumentService {
         return;
       }
 
-      await this.updateDocumentStatus(documentId, 'indexing');
+      // La indexación en OpenAI (RAG) es best-effort: si falla por falta de
+      // créditos, API key o red, el documento NO se queda atascado en 'indexing'
+      // ni se marca como 'failed'. Queda como 'uploaded' y se puede resumir igual,
+      // porque el resumen usa el texto extraído, no la indexación.
+      try {
+        await this.updateDocumentStatus(documentId, 'indexing');
 
-      const ragResult = await OpenAIRagService.uploadAndIndexDocument({
-        file,
-        userId,
-        courseId,
-        documentId,
-        storageKey,
-      });
-
-      await query(
-        `UPDATE documents 
-         SET openai_file_id = $1, 
-             openai_vector_store_id = $2,
-             openai_vector_store_file_id = $3,
-             status = $4,
-             updated_at = NOW()
-         WHERE id = $5`,
-        [
-          ragResult.openaiFileId,
-          ragResult.openaiVectorStoreId,
-          ragResult.openaiVectorStoreFileId,
-          'indexed',
+        const ragResult = await OpenAIRagService.uploadAndIndexDocument({
+          file,
+          userId,
+          courseId,
           documentId,
-        ]
-      );
+          storageKey,
+        });
 
-      logger.info(`Documento ${documentId} indexado correctamente`);
+        await query(
+          `UPDATE documents 
+           SET openai_file_id = $1, 
+               openai_vector_store_id = $2,
+               openai_vector_store_file_id = $3,
+               status = $4,
+               updated_at = NOW()
+           WHERE id = $5`,
+          [
+            ragResult.openaiFileId,
+            ragResult.openaiVectorStoreId,
+            ragResult.openaiVectorStoreFileId,
+            'indexed',
+            documentId,
+          ]
+        );
+
+        logger.info(`Documento ${documentId} indexado correctamente`);
+      } catch (indexError) {
+        logger.warn(
+          `No se pudo indexar el documento ${documentId} en OpenAI; queda como 'uploaded' y se podrá resumir igualmente:`,
+          indexError
+        );
+        await this.updateDocumentStatus(documentId, 'uploaded');
+      }
     } catch (error) {
       logger.error(`Error procesando documento ${documentId}:`, error);
       await this.updateDocumentStatus(
@@ -292,5 +304,46 @@ export class DocumentService {
       logger.error('Error en deleteDocument:', error);
       throw error;
     }
+  }
+
+  /**
+   * Genera un resumen estructurado y fiel del contenido de un documento.
+   * Soporta documentos largos mediante la estrategia map-reduce del servicio RAG.
+   */
+  static async summarizeDocument(
+    userId: string,
+    documentId: string
+  ): Promise<{ documentId: string; title: string; summary: string }> {
+    // 1. Verifica propiedad y obtiene el documento
+    const document = await this.getDocument(userId, documentId);
+
+    if (!document.storageKey) {
+      throw ApiError.badRequest('El documento no tiene un archivo asociado.');
+    }
+
+    // 2. Obtiene la ruta local del archivo (descarga de Spaces si es necesario)
+    const filePath = await StorageService.getFilePath(document.storageKey);
+
+    // 3. Extrae el texto del documento
+    const extraction = await TextExtractor.extractText(filePath, document.mimeType);
+
+    if (!extraction.hasText || extraction.text.trim().length === 0) {
+      throw ApiError.badRequest(
+        'No se pudo extraer texto del documento. Es posible que sea un PDF escaneado sin texto seleccionable.'
+      );
+    }
+
+    logger.info(
+      `Generando resumen del documento ${documentId} (${extraction.characterCount} caracteres)`
+    );
+
+    // 4. Genera el resumen (map-reduce para documentos largos)
+    const summary = await OpenAIRagService.summarizeText(extraction.text);
+
+    return {
+      documentId: document.id,
+      title: document.originalFilename,
+      summary,
+    };
   }
 }

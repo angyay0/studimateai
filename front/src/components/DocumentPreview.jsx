@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   X, FileText, CheckCircle, AlertCircle, Clock,
-  Loader2, Trash2, Target, Calendar, HardDrive, Pencil, Check
-} from 'lucide-react'
+  Loader2, Trash2, Target, Calendar, HardDrive, Pencil, Check, Sparkles} from 'lucide-react'
 import { documentsAPI } from '../services/api'
+import SummaryModal from './SummaryModal'
 
 /** Formatea bytes a una unidad legible (KB, MB) */
 function formatSize(bytes) {
@@ -40,6 +40,10 @@ export default function DocumentPreview({ doc, onClose, onDelete, onRename }) {
   const [newName, setNewName] = useState(doc.originalFilename)
   const [renameError, setRenameError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
+
+  // Se puede resumir si el archivo ya está disponible en almacenamiento
+  const canSummarize = doc.status === 'indexed' || doc.status === 'uploaded'
 
   // Cerrar con Escape
   useEffect(() => {
@@ -77,7 +81,8 @@ export default function DocumentPreview({ doc, onClose, onDelete, onRename }) {
   }
 
   return (
-    /* Overlay */
+    <>
+    {/* Overlay */}
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={onClose}
@@ -180,20 +185,31 @@ export default function DocumentPreview({ doc, onClose, onDelete, onRename }) {
         </div>
 
         {/* Acciones */}
-        <div className="px-6 pb-6 flex gap-3">
-          {doc.status === 'indexed' && (
-            <Link
-              to="/quiz-mode"
-              className="btn-primary flex-1 justify-center"
-              onClick={onClose}
-            >
-              <Target className="w-4 h-4" />
-              Generar Quiz
-            </Link>
+        <div className="px-6 pb-6 space-y-3">
+          {canSummarize && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSummary(true)}
+                className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-lg border border-primary-200 text-primary-700 hover:bg-primary-50 font-medium transition-colors text-sm"
+              >
+                <Sparkles className="w-4 h-4" />
+                Resumir
+              </button>
+              {doc.status === 'indexed' && (
+                <Link
+                  to="/quiz-mode"
+                  className="btn-primary flex-1 justify-center"
+                  onClick={onClose}
+                >
+                  <Target className="w-4 h-4" />
+                  Generar Quiz
+                </Link>
+              )}
+            </div>
           )}
           <button
             onClick={handleDelete}
-            className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 font-medium transition-colors text-sm"
+            className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 font-medium transition-colors text-sm"
           >
             <Trash2 className="w-4 h-4" />
             Eliminar
@@ -201,5 +217,10 @@ export default function DocumentPreview({ doc, onClose, onDelete, onRename }) {
         </div>
       </div>
     </div>
+
+    {showSummary && (
+      <SummaryModal doc={doc} onClose={() => setShowSummary(false)} />
+    )}
+    </>
   )
 }
