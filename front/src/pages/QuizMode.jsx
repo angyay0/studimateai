@@ -76,6 +76,27 @@ const mergeAttempts = (backendAttempts, localAttempts) => {
     .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
 }
 
+const getChoiceIndex = (value) => {
+  if (typeof value !== 'string') return null
+
+  const match = value.trim().match(/^([A-Z])(?:[\.\)]\s+|$)/i)
+  if (!match) return null
+
+  const index = match[1].toUpperCase().charCodeAt(0) - 65
+  return index >= 0 ? index : null
+}
+
+const normalizeChoiceText = (value, question) => {
+  if (typeof value !== 'string') return value
+
+  const choiceIndex = getChoiceIndex(value)
+  if (choiceIndex !== null && question?.options?.[choiceIndex]) {
+    return question.options[choiceIndex]
+  }
+
+  return value.replace(/^([A-Z])(?:[\.\)]\s+|$)/i, '').trim() || value.trim()
+}
+
 function QuizMode({ onLogout }) {
   const [quizzes, setQuizzes] = useState([])
   const [documents, setDocuments] = useState([])
@@ -167,11 +188,15 @@ function QuizMode({ onLogout }) {
     const totalQuestions = exam.questions.length
     const reviewedQuestions = exam.questions.map((question) => {
       const selectedAnswer = submittedAnswers[question.id] || null
-      const isCorrect = selectedAnswer === question.correctAnswer
+      const normalizedSelectedAnswer = normalizeChoiceText(selectedAnswer, question)
+      const normalizedCorrectAnswer = normalizeChoiceText(question.correctAnswer, question)
+      const isCorrect = normalizedSelectedAnswer === normalizedCorrectAnswer
 
       return {
         ...question,
         selectedAnswer,
+        selectedAnswerLabel: normalizedSelectedAnswer,
+        correctAnswerLabel: normalizedCorrectAnswer,
         isCorrect
       }
     })
@@ -432,10 +457,10 @@ function QuizMode({ onLogout }) {
                       </div>
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
                         <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">
-                          <span className="font-semibold">Tu respuesta:</span> {question.selectedAnswer || 'Sin responder'}
+                          <span className="font-semibold">Tu respuesta:</span> {normalizeChoiceText(question.selectedAnswerLabel || question.selectedAnswer, question) || 'Sin responder'}
                         </p>
                         <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
-                          <span className="font-semibold">Respuesta correcta:</span> {question.correctAnswer}
+                          <span className="font-semibold">Respuesta correcta:</span> {normalizeChoiceText(question.correctAnswerLabel || question.correctAnswer, question)}
                         </p>
                       </div>
                       <p className="mt-3 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
