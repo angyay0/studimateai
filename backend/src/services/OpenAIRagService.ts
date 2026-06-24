@@ -147,10 +147,19 @@ export class OpenAIRagService {
     if (documentIds && documentIds.length > 0) {
       const docsResult = await query(
         `SELECT openai_file_id FROM documents 
-         WHERE id = ANY($1) AND user_id = $2 AND openai_file_id IS NOT NULL`,
+         WHERE id = ANY($1)
+           AND user_id = $2
+           AND status = 'indexed'
+           AND openai_file_id IS NOT NULL`,
         [documentIds, userId]
       );
       fileIds = docsResult.rows.map((row: any) => row.openai_file_id);
+
+      if (fileIds.length === 0) {
+        throw ApiError.badRequest(
+          'El documento seleccionado todavía no está indexado. Espera a que termine el procesamiento antes de generar el examen.'
+        );
+      }
     } else {
       const docsResult = await query(
         `SELECT openai_file_id FROM documents 
@@ -254,6 +263,26 @@ export class OpenAIRagService {
         [documentIds, userId]
       );
       fileIds = docsResult.rows.map((row: any) => row.openai_file_id);
+
+      const indexedDocsResult = await query(
+        `SELECT id, original_filename as "originalFilename", status
+         FROM documents
+         WHERE id = ANY($1) AND user_id = $2 AND status != 'indexed'`,
+        [documentIds, userId]
+      );
+
+      if (indexedDocsResult.rows.length > 0) {
+        const blockedDoc = indexedDocsResult.rows[0];
+        throw ApiError.badRequest(
+          `El documento "${blockedDoc.originalFilename}" aún no está indexado. Espera a que termine el procesamiento antes de generar el examen.`
+        );
+      }
+
+      if (fileIds.length === 0) {
+        throw ApiError.badRequest(
+          'No se encontraron documentos indexados para generar el examen.'
+        );
+      }
     } else {
       const docsResult = await query(
         `SELECT openai_file_id FROM documents 

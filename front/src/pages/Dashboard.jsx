@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, Target, Clock, Star, Upload, ChevronRight, Flame, FileText } from 'lucide-react'
+import { BookOpen, Target, Clock, Star, Upload, ChevronRight, FileText } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { statsAPI, documentsAPI, quizzesAPI, authAPI } from '../services/api'
 
@@ -82,10 +82,6 @@ function Dashboard({ onLogout }) {
                   {getGreeting()}, {user?.name || user?.firstName || 'friend'}! 👋
                 </h1>
               </div>
-              <div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-full border border-orange-200">
-                <Flame className="w-5 h-5 text-orange-500" />
-                <span className="font-bold text-orange-600">14-day streak!</span>
-              </div>
             </div>
           </div>
 
@@ -146,14 +142,14 @@ function Dashboard({ onLogout }) {
               </div>
 
               <div className="space-y-4">
-                {documents.length == 0 && (
+                {documents.length === 0 && (
                   <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white p-5">
                     <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm font-semibold text-gray-700">No hay documentos reales aun</p>
+                      <p className="text-sm font-semibold text-gray-700">No hay documentos subidos</p>
                     </div>
                     <Link to="/upload" className="w-full flex items-center justify-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-primary-700 font-medium hover:bg-primary-100 transition-colors">
                       <Upload className="w-4 h-4" />
-                      Upload new document
+                      Subir documento
                     </Link>
                   </div>
                 )}
@@ -187,7 +183,7 @@ function Dashboard({ onLogout }) {
                   <Link to="/upload" className="block card border-2 border-dashed border-gray-300 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer">
                     <div className="flex items-center justify-center gap-3 py-1">
                       <Upload className="w-5 h-5 text-gray-400" />
-                      <span className="text-gray-600 font-medium">Upload new document</span>
+                      <span className="text-gray-600 font-medium">Subir otro documento</span>
                     </div>
                   </Link>
                 </div>
@@ -198,34 +194,37 @@ function Dashboard({ onLogout }) {
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Upcoming Quizzes</h2>
               <div className="space-y-4">
-                {upcomingQuizzes.map((quiz) => (
-                  <div key={quiz.id} className="card">
-                    <h3 className="font-semibold text-gray-900 mb-2">{quiz.title}</h3>
-                    <p className="text-sm text-gray-600 mb-3">{quiz.time}</p>
-                    <div className="flex items-center justify-between">
+                {upcomingQuizzes.length === 0 ? (
+                  <div className="card">
+                    <h3 className="font-semibold text-gray-900 mb-2">No hay exámenes programados</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Genera un examen desde un documento subido para verlo aquí.
+                    </p>
+                    <Link to="/quiz-mode" className="btn-primary inline-flex">
+                      Ir a Quizzes
+                      <ChevronRight className="w-4 h-4" />
+                    </Link>
+                  </div>
+                ) : (
+                  upcomingQuizzes.map((quiz) => (
+                    <div key={quiz.id} className="card">
+                      <h3 className="font-semibold text-gray-900 mb-2">{quiz.title}</h3>
+                      <p className="text-sm text-gray-600 mb-3">{quiz.time}</p>
+                      <div className="flex items-center justify-between">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        quiz.difficulty === 'Medium' 
+                        quiz.difficulty === 'Medium'
                           ? 'bg-blue-100 text-blue-700'
                           : 'bg-red-100 text-red-700'
                       }`}>
-                        {quiz.difficulty}
-                      </span>
-                      <button className="text-primary-600 hover:text-primary-700 font-medium text-sm">
-                        Start quiz →
-                      </button>
+                          {quiz.difficulty}
+                        </span>
+                        <button className="text-primary-600 hover:text-primary-700 font-medium text-sm">
+                          Start quiz →
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-
-                <div className="card bg-gradient-to-br from-primary-50 to-purple-50 border-primary-200">
-                  <p className="text-sm text-gray-700 mb-3">
-                    🎯 You are on track! Keep up the momentum.
-                  </p>
-                  <Link to="/progress" className="text-primary-600 hover:text-primary-700 font-medium text-sm flex items-center gap-1">
-                    View detailed progress
-                    <ChevronRight className="w-4 h-4" />
-                  </Link>
-                </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

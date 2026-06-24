@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { OpenAIRagService } from '../services/OpenAIRagService';
+import { ExamAttemptService } from '../services/ExamAttemptService';
 
 const router = Router();
 
@@ -50,6 +51,41 @@ router.post(
       success: true,
       questions,
       count: questions.length,
+    });
+  })
+);
+
+router.post(
+  '/attempts',
+  authMiddleware,
+  body('score').isInt({ min: 0, max: 100 }).withMessage('score debe estar entre 0 y 100'),
+  body('correctAnswers').isInt({ min: 0 }).withMessage('correctAnswers debe ser un entero positivo'),
+  body('incorrectAnswers').isInt({ min: 0 }).withMessage('incorrectAnswers debe ser un entero positivo'),
+  body('totalQuestions').isInt({ min: 1 }).withMessage('totalQuestions debe ser mayor a 0'),
+  body('timeTakenSeconds').isInt({ min: 0 }).withMessage('timeTakenSeconds debe ser un entero positivo'),
+  body('submitReason').isIn(['manual', 'auto']).withMessage('submitReason debe ser manual o auto'),
+  body('config').isObject().withMessage('config debe ser un objeto'),
+  body('questions').isArray({ min: 1 }).withMessage('questions debe incluir al menos un reactivo'),
+  validate,
+  asyncHandler(async (req, res) => {
+    const attempt = await ExamAttemptService.create(req.user!.id, req.body);
+
+    res.status(201).json({
+      success: true,
+      attempt,
+    });
+  })
+);
+
+router.get(
+  '/attempts',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    const attempts = await ExamAttemptService.listRecent(req.user!.id);
+
+    res.json({
+      success: true,
+      attempts,
     });
   })
 );
