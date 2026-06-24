@@ -746,38 +746,40 @@ function QuizMode({ onLogout }) {
 
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Recent Quiz Results</h2>
-            <div className="space-y-4">
-              {(recentAttempts.length > 0 ? recentAttempts : [
-                { id: 'sample-1', score: 92, submittedAt: 'Yesterday', totalQuestions: 20, correctAnswers: 18 },
-                { id: 'sample-2', score: 78, submittedAt: '2 days ago', totalQuestions: 15, correctAnswers: 12 },
-                { id: 'sample-3', score: 85, submittedAt: '3 days ago', totalQuestions: 25, correctAnswers: 21 }
-              ]).map((attempt) => (
-                <div key={attempt.id} className="card">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-1 items-center gap-3">
-                      <FileText className="w-5 h-5 text-primary-500" />
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-1">Exam Attempt</h3>
-                        <p className="text-sm text-gray-500">
-                          {attempt.totalQuestions} questions | {attempt.correctAnswers} correct |{' '}
-                          {attempt.submittedAt?.includes('T')
-                            ? new Date(attempt.submittedAt).toLocaleString()
-                            : attempt.submittedAt}
+            {recentAttempts.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
+                <p className="text-gray-600">No exam attempts yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentAttempts.map((attempt) => (
+                  <div key={attempt.id} className="card">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-1 items-center gap-3">
+                        <FileText className="w-5 h-5 text-primary-500" />
+                        <div>
+                          <h3 className="font-semibold text-gray-900 mb-1">Exam Attempt</h3>
+                          <p className="text-sm text-gray-500">
+                            {attempt.totalQuestions} questions | {attempt.correctAnswers} correct |{' '}
+                            {attempt.submittedAt?.includes('T')
+                              ? new Date(attempt.submittedAt).toLocaleString()
+                              : attempt.submittedAt}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-2xl font-bold ${
+                          attempt.score >= 80 ? 'text-green-600' : attempt.score >= 60 ? 'text-blue-600' : 'text-orange-600'
+                        }`}>
+                          {attempt.score}%
                         </p>
+                        <p className="text-sm text-gray-500">Score</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`text-2xl font-bold ${
-                        attempt.score >= 80 ? 'text-green-600' : attempt.score >= 60 ? 'text-blue-600' : 'text-orange-600'
-                      }`}>
-                        {attempt.score}%
-                      </p>
-                      <p className="text-sm text-gray-500">Score</p>
-                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
