@@ -10,7 +10,8 @@ import {
   TimerReset,
   CheckCircle,
   XCircle,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { documentsAPI, quizzesAPI } from '../services/api'
@@ -385,21 +386,6 @@ function QuizMode({ onLogout }) {
     }
   }
 
-  const handleDeleteAll = async () => {
-    if (!confirm('Are you sure you want to delete all generated questions? This cannot be undone.')) {
-      return
-    }
-
-    try {
-      await quizzesAPI.deleteAll()
-      alert('All questions deleted successfully')
-      loadQuizzes()
-    } catch (error) {
-      console.error('Error deleting questions:', error)
-      alert('Failed to delete questions: ' + (error.message || 'Unknown error'))
-    }
-  }
-
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar onLogout={onLogout} />
@@ -532,13 +518,9 @@ function QuizMode({ onLogout }) {
                       <Clock className="w-4 h-4" />
                       Tiempo restante
                     </div>
-                    <button
-                      onClick={() => window.location.href = '/quiz/take'}
-                      className="btn-primary inline-flex items-center gap-2"
-                    >
-                      <PlayCircle className="w-5 h-5" />
-                      Start Quiz
-                    </button>
+                    <p className="mt-1 font-mono text-4xl font-bold tabular-nums">
+                      {formatTime(remainingSeconds)}
+                    </p>
                   </div>
 
                   <button type="button" onClick={() => handleSubmitExam('manual')} className="btn-primary">

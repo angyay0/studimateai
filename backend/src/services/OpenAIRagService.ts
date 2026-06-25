@@ -298,36 +298,29 @@ export class OpenAIRagService {
       throw ApiError.badRequest('No hay documentos indexados disponibles');
     }
 
-    const prompt = `Genera exactamente ${questionCount} preguntas de examen basadas ÚNICAMENTE en el contenido de los documentos proporcionados.
+    const prompt = `Genera ${questionCount} preguntas de examen del contenido adjunto.
 
-Requisitos:
+REGLAS CRÍTICAS:
+- Explicaciones MUY BREVES (máximo 15 palabras)
+- Opciones CORTAS (máximo 8 palabras cada una)
+- NO uses comillas dobles (") en el texto, usa comillas simples (')
 - Dificultad: ${difficulty}
-- Tipos de pregunta: ${questionTypes.join(', ')}
-${topic ? `- Tema específico: ${topic}` : ''}
+- Tipo: ${questionTypes.join(', ')}
+${topic ? `- Tema: ${topic}` : ''}
 
-Para cada pregunta, proporciona:
-1. questionText: El texto de la pregunta
-2. questionType: El tipo (${questionTypes.join(', ')})
-3. options: Array de opciones (para multiple_choice)
-4. correctAnswer: La respuesta correcta
-5. explanation: Explicación de por qué es correcta
-6. difficulty: ${difficulty}
-
-Responde ÚNICAMENTE con un JSON válido en este formato:
+Formato JSON (sin markdown, sin texto extra):
 {
   "questions": [
     {
-      "questionText": "...",
+      "questionText": "Pregunta?",
       "questionType": "multiple_choice",
       "options": ["A", "B", "C", "D"],
       "correctAnswer": "A",
-      "explanation": "...",
+      "explanation": "Breve explicación.",
       "difficulty": "${difficulty}"
     }
   ]
-}
-
-NO incluyas texto adicional, solo el JSON.`;
+}`;
 
     logger.info(`Generando ${questionCount} preguntas de examen usando ${fileIds.length} documentos`);
 
@@ -372,6 +365,7 @@ NO incluyas texto adicional, solo el JSON.`;
 
     let responseText = textContent.text.value.trim();
     
+    // Remove markdown code blocks
     if (responseText.startsWith('```json')) {
       responseText = responseText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
     } else if (responseText.startsWith('```')) {
@@ -382,8 +376,48 @@ NO incluyas texto adicional, solo el JSON.`;
     try {
       parsedResponse = JSON.parse(responseText);
     } catch (error) {
-      logger.error('Error parseando respuesta de OpenAI:', responseText);
-      throw ApiError.internal('No se pudo parsear la respuesta del asistente');
+      // Try to repair truncated JSON
+      logger.warn('JSON parse failed, attempting to repair truncated response...');
+      
+      // If it looks like truncated JSON, try to close it
+      if (responseText.includes('"questions"') && responseText.includes('[')) {
+        let repairedText = responseText;
+        
+        // Count open braces and brackets
+        const openBraces = (repairedText.match(/{/g) || []).length;
+        const closeBraces = (repairedText.match(/}/g) || []).length;
+        const openBrackets = (repairedText.match(/\[/g) || []).length;
+        const closeBrackets = (repairedText.match(/\]/g) || []).length;
+        
+        // Close incomplete strings
+        const quoteCount = (repairedText.match(/"/g) || []).length;
+        if (quoteCount % 2 !== 0) {
+          repairedText += '"';
+        }
+        
+        // Close incomplete objects and arrays
+        for (let i = 0; i < openBraces - closeBraces; i++) {
+          repairedText += '}';
+        }
+        for (let i = 0; i < openBrackets - closeBrackets; i++) {
+          repairedText += ']';
+        }
+        
+        try {
+          parsedResponse = JSON.parse(repairedText);
+          logger.info(`Successfully repaired truncated JSON. Got ${parsedResponse.questions?.length || 0} questions.`);
+        } catch (repairError) {
+          logger.error('Error parseando respuesta de OpenAI:');
+          logger.error('Response text:', responseText.substring(0, 500));
+          logger.error('Parse error:', error);
+          throw ApiError.internal(`No se pudo parsear la respuesta del asistente. Intenta con menos preguntas.`);
+        }
+      } else {
+        logger.error('Error parseando respuesta de OpenAI:');
+        logger.error('Response text:', responseText.substring(0, 500));
+        logger.error('Parse error:', error);
+        throw ApiError.internal(`No se pudo parsear la respuesta del asistente. Respuesta: ${responseText.substring(0, 200)}`);
+      }
     }
 
     await client.beta.assistants.delete(assistant.id);
