@@ -10,7 +10,8 @@ import {
   TimerReset,
   CheckCircle,
   XCircle,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 import { documentsAPI, quizzesAPI } from '../services/api'
@@ -368,6 +369,21 @@ function QuizMode({ onLogout }) {
         </div>
       </div>
     )
+  }
+
+  const handleDeleteAll = async () => {
+    if (!confirm('Are you sure you want to delete all generated questions? This cannot be undone.')) {
+      return
+    }
+
+    try {
+      await quizzesAPI.deleteAll()
+      alert('All questions deleted successfully')
+      loadQuizzes()
+    } catch (error) {
+      console.error('Error deleting questions:', error)
+      alert('Failed to delete questions: ' + (error.message || 'Unknown error'))
+    }
   }
 
   return (

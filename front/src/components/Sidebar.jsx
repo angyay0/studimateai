@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, FileText, Target, TrendingUp, Award, Settings, Sparkles, LogOut, Upload } from 'lucide-react'
+import { LayoutDashboard, FileText, Target, TrendingUp, Award, Settings, Sparkles, LogOut, Upload, Brain } from 'lucide-react'
 import { authAPI } from '../services/api'
 import { useEffect, useState } from 'react'
 
@@ -16,6 +16,7 @@ function Sidebar({ onLogout }) {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/documents', icon: FileText, label: 'My Documents' },
     { path: '/upload', icon: Upload, label: 'Upload & Generate' },
+    { path: '/flashcards', icon: Brain, label: 'Flashcards' },
     { path: '/quiz-mode', icon: Target, label: 'Quizzes' },
     { path: '/progress', icon: TrendingUp, label: 'Progress' },
     { path: '/achievements', icon: Award, label: 'Achievements' },
