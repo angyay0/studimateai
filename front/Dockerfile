@@ -32,8 +32,9 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # Copy nginx configuration for SPA routing
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 3000
-EXPOSE 3000
+# Expose ports 80 and 8080 for DigitalOcean App Platform
+EXPOSE 80
+EXPOSE 8080
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
